@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\Api\AppointmentController;
 use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\PatientController;
 use App\Http\Controllers\Api\UserController;
@@ -39,5 +40,19 @@ Route::prefix('v1')->group(function () {
             Route::delete('/patients/{patient}', [PatientController::class, 'destroy']);
             Route::patch('/patients/{patient}/toggle-active', [PatientController::class, 'toggleActive']);
         });
+
+        // Lectura de Citas (para calendario, agenda y filtros por año/mes/día)
+        Route::get('/appointments', [AppointmentController::class, 'index']);
+        Route::get('/appointments/{appointment}', [AppointmentController::class, 'show']);
+
+        // Gestión de Citas (Agendar, Editar, Reagendar, Asignar Paciente y Cancelar)
+        Route::middleware('role:administrador,medico,recepcionista')->group(function () {
+            Route::post('/appointments', [AppointmentController::class, 'store']);
+            Route::put('/appointments/{appointment}', [AppointmentController::class, 'update']);
+            Route::patch('/appointments/{appointment}', [AppointmentController::class, 'update']);
+            Route::patch('/appointments/{appointment}/assign-patient', [AppointmentController::class, 'assignPatient']);
+            Route::patch('/appointments/{appointment}/cancel', [AppointmentController::class, 'cancel']);
+        });
     });
 });
+
