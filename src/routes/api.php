@@ -2,6 +2,8 @@
 
 use App\Http\Controllers\Api\AppointmentController;
 use App\Http\Controllers\Api\AuthController;
+use App\Http\Controllers\Api\ClinicalHistoryController;
+use App\Http\Controllers\Api\ClinicalOptionController;
 use App\Http\Controllers\Api\PatientController;
 use App\Http\Controllers\Api\UserController;
 use Illuminate\Support\Facades\Route;
@@ -52,6 +54,23 @@ Route::prefix('v1')->group(function () {
             Route::patch('/appointments/{appointment}', [AppointmentController::class, 'update']);
             Route::patch('/appointments/{appointment}/assign-patient', [AppointmentController::class, 'assignPatient']);
             Route::patch('/appointments/{appointment}/cancel', [AppointmentController::class, 'cancel']);
+        });
+
+        // Catálogo de opciones clínicas (síntomas, CEAP, indicaciones, etc.)
+        Route::get('/clinical-history-options', [ClinicalOptionController::class, 'index']);
+
+        // Lectura de Historias Clínicas (disponible para personal autorizado)
+        Route::get('/clinical-histories', [ClinicalHistoryController::class, 'index']);
+        Route::get('/clinical-histories/{clinicalHistory}', [ClinicalHistoryController::class, 'show']);
+        Route::get('/patients/{patient}/clinical-histories', [ClinicalHistoryController::class, 'byPatient']);
+
+        // Registro y edición de Historias Clínicas (Restringido a Administrador o Médico)
+        Route::middleware('role:administrador,medico')->group(function () {
+            Route::post('/clinical-histories', [ClinicalHistoryController::class, 'store']);
+            Route::put('/clinical-histories/{clinicalHistory}', [ClinicalHistoryController::class, 'update']);
+            Route::patch('/clinical-histories/{clinicalHistory}', [ClinicalHistoryController::class, 'update']);
+            Route::post('/clinical-histories/{clinicalHistory}/venous-map', [ClinicalHistoryController::class, 'storeVenousMap']);
+            Route::delete('/clinical-histories/{clinicalHistory}', [ClinicalHistoryController::class, 'destroy']);
         });
     });
 });
