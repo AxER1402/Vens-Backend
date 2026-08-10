@@ -186,7 +186,16 @@ class ClinicalHistoryController extends Controller
     }
 
     /**
-     * Guardar el mapeo venoso dibujado en el canvas como archivo PNG.
+     * Guardar el mapeo venoso de una consulta.
+     *
+     * Se archivan dos representaciones del mismo mapeo, cada una con su papel:
+     * el PNG es lo que se imprime y lo que se muestra en una consulta ya
+     * finalizada; el documento vectorial (`datos`) es lo que permite reabrirlo
+     * y seguir editándolo en la consulta siguiente.
+     *
+     * `datos` es opcional para no romper a los clientes que solo envían la
+     * imagen, pero cuando llega reemplaza por completo al anterior: el mapeo
+     * es uno solo por consulta.
      */
     public function storeVenousMap(StoreVenousMapRequest $request, ClinicalHistory $clinicalHistory): JsonResponse
     {
@@ -213,6 +222,7 @@ class ClinicalHistoryController extends Controller
 
         $clinicalHistory->update([
             'mapeo_venoso_path' => $ruta,
+            'mapeo_venoso_datos' => $request->input('datos'),
             'mapeo_venoso_updated_at' => now(),
             'updated_by' => auth()->id(),
         ]);

@@ -64,6 +64,7 @@ class ClinicalHistory extends Model
         'estado_general',
         'notas',
         'mapeo_venoso_path',
+        'mapeo_venoso_datos',
         'mapeo_venoso_updated_at',
         'estado_registro',
         'activo',
@@ -84,6 +85,8 @@ class ClinicalHistory extends Model
         return [
             'fecha_consulta' => 'date:Y-m-d',
             'ultima_menstruacion' => 'date:Y-m-d',
+            // Documento vectorial del mapeo: { version, plantilla, objetos }
+            'mapeo_venoso_datos' => 'array',
             'mapeo_venoso_updated_at' => 'datetime',
             'familiar_varices' => 'boolean',
             'activo' => 'boolean',
