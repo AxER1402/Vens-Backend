@@ -7,6 +7,7 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Support\Facades\Storage;
 
 class ClinicalHistory extends Model
@@ -137,6 +138,14 @@ class ClinicalHistory extends Model
     public function editor(): BelongsTo
     {
         return $this->belongsTo(User::class, 'updated_by');
+    }
+
+    /**
+     * Estudios de Ecodöppler venoso adjuntos a la consulta.
+     */
+    public function dopplerReports(): HasMany
+    {
+        return $this->hasMany(DopplerReport::class, 'clinical_history_id');
     }
 
     /**

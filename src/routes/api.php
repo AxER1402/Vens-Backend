@@ -4,6 +4,7 @@ use App\Http\Controllers\Api\AppointmentController;
 use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\ClinicalHistoryController;
 use App\Http\Controllers\Api\ClinicalOptionController;
+use App\Http\Controllers\Api\DopplerReportController;
 use App\Http\Controllers\Api\PatientController;
 use App\Http\Controllers\Api\UserController;
 use Illuminate\Support\Facades\Route;
@@ -71,6 +72,20 @@ Route::prefix('v1')->group(function () {
             Route::patch('/clinical-histories/{clinicalHistory}', [ClinicalHistoryController::class, 'update']);
             Route::post('/clinical-histories/{clinicalHistory}/venous-map', [ClinicalHistoryController::class, 'storeVenousMap']);
             Route::delete('/clinical-histories/{clinicalHistory}', [ClinicalHistoryController::class, 'destroy']);
+        });
+
+        // Lectura de Reportes de Ecodöppler venoso (disponible para personal autorizado)
+        Route::get('/doppler-reports', [DopplerReportController::class, 'index']);
+        Route::get('/doppler-reports/{dopplerReport}', [DopplerReportController::class, 'show']);
+        Route::get('/patients/{patient}/doppler-reports', [DopplerReportController::class, 'byPatient']);
+        Route::get('/clinical-histories/{clinicalHistory}/doppler-reports', [DopplerReportController::class, 'byClinicalHistory']);
+
+        // Registro y edición de Reportes de Ecodöppler (Restringido a Administrador o Médico)
+        Route::middleware('role:administrador,medico')->group(function () {
+            Route::post('/doppler-reports', [DopplerReportController::class, 'store']);
+            Route::put('/doppler-reports/{dopplerReport}', [DopplerReportController::class, 'update']);
+            Route::patch('/doppler-reports/{dopplerReport}', [DopplerReportController::class, 'update']);
+            Route::delete('/doppler-reports/{dopplerReport}', [DopplerReportController::class, 'destroy']);
         });
     });
 });

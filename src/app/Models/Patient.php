@@ -46,4 +46,12 @@ class Patient extends Model
     {
         return $this->hasMany(ClinicalHistory::class, 'patient_id');
     }
+
+    /**
+     * Reportes de Ecodöppler venoso realizados al paciente.
+     */
+    public function dopplerReports(): HasMany
+    {
+        return $this->hasMany(DopplerReport::class, 'patient_id');
+    }
 }
