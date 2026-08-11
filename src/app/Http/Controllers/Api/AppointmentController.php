@@ -8,6 +8,7 @@ use App\Http\Requests\Appointment\CancelAppointmentRequest;
 use App\Http\Requests\Appointment\StoreAppointmentRequest;
 use App\Http\Requests\Appointment\UpdateAppointmentRequest;
 use App\Models\Appointment;
+use App\Models\BlockedDay;
 use App\Models\Patient;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -111,6 +112,16 @@ class AppointmentController extends Controller
         $inicio = $validated['fecha_hora_inicio'];
         $fin = $validated['fecha_hora_fin'];
 
+        // La agenda está cerrada en feriados, vacaciones y cierres registrados
+        $blocked = $this->findBlockedDay($inicio);
+        if ($blocked) {
+            return response()->json([
+                'success' => false,
+                'message' => "No se puede agendar: la agenda está bloqueada ese día ({$blocked->tipo} — {$blocked->motivo}).",
+                'blocked_day' => $blocked,
+            ], 422);
+        }
+
         // Verificación de choque de horarios para el médico si está asignado
         if ($medicoId && !$request->boolean('ignore_conflict')) {
             $conflict = $this->checkScheduleConflict($medicoId, $inicio, $fin);
@@ -153,6 +164,19 @@ class AppointmentController extends Controller
         $medicoId = $validated['medico_id'] ?? $appointment->medico_id;
         $inicio = $validated['fecha_hora_inicio'] ?? $appointment->fecha_hora_inicio;
         $fin = $validated['fecha_hora_fin'] ?? $appointment->fecha_hora_fin;
+
+        // Solo se valida el bloqueo si la cita se está moviendo de fecha: una cita
+        // que ya existía en un día luego bloqueado se puede seguir editando o cancelar.
+        if ($inicio != $appointment->fecha_hora_inicio) {
+            $blocked = $this->findBlockedDay($inicio);
+            if ($blocked) {
+                return response()->json([
+                    'success' => false,
+                    'message' => "No se puede reagendar a esa fecha: la agenda está bloqueada ({$blocked->tipo} — {$blocked->motivo}).",
+                    'blocked_day' => $blocked,
+                ], 422);
+            }
+        }
 
         // Si se cambia fecha/hora o médico, verificar conflictos
         if ($medicoId && ($inicio != $appointment->fecha_hora_inicio || $fin != $appointment->fecha_hora_fin || $medicoId != $appointment->medico_id)) {
@@ -224,6 +248,16 @@ class AppointmentController extends Controller
             'message' => 'Cita cancelada exitosamente.',
             'data' => $appointment,
         ], 200);
+    }
+
+    /**
+     * Auxiliar para saber si una fecha/hora cae en un día bloqueado de la agenda.
+     */
+    private function findBlockedDay(string|Carbon $inicio): ?BlockedDay
+    {
+        $fecha = Carbon::parse($inicio)->format('Y-m-d');
+
+        return BlockedDay::coveringDate($fecha)->first();
     }
 
     /**

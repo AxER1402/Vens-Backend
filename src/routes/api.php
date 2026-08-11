@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\Api\AppointmentController;
 use App\Http\Controllers\Api\AuthController;
+use App\Http\Controllers\Api\BlockedDayController;
 use App\Http\Controllers\Api\ClinicalHistoryController;
 use App\Http\Controllers\Api\ClinicalOptionController;
 use App\Http\Controllers\Api\DopplerReportController;
@@ -55,6 +56,17 @@ Route::prefix('v1')->group(function () {
             Route::patch('/appointments/{appointment}', [AppointmentController::class, 'update']);
             Route::patch('/appointments/{appointment}/assign-patient', [AppointmentController::class, 'assignPatient']);
             Route::patch('/appointments/{appointment}/cancel', [AppointmentController::class, 'cancel']);
+        });
+
+        // Lectura de días bloqueados de la agenda (feriados, vacaciones y cierres)
+        Route::get('/blocked-days', [BlockedDayController::class, 'index']);
+
+        // Gestión de días bloqueados (Restringido a Administrador o Médico)
+        Route::middleware('role:administrador,medico')->group(function () {
+            Route::post('/blocked-days', [BlockedDayController::class, 'store']);
+            Route::put('/blocked-days/{blockedDay}', [BlockedDayController::class, 'update']);
+            Route::patch('/blocked-days/{blockedDay}', [BlockedDayController::class, 'update']);
+            Route::delete('/blocked-days/{blockedDay}', [BlockedDayController::class, 'destroy']);
         });
 
         // Catálogo de opciones clínicas (síntomas, CEAP, indicaciones, etc.)
