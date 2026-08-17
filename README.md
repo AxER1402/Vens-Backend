@@ -17,8 +17,9 @@ Sistema de gestión para un centro médico especializado en Flebología.
 6. [Módulos del Sistema](#módulos-del-sistema)
 7. [Estructura del Proyecto](#estructura-del-proyecto)
 8. [API Endpoints](#api-endpoints)
-9. [Solución de Problemas](#solución-de-problemas)
-10. [Historial de Cambios](#historial-de-cambios)
+9. [Correo y Recuperación de Contraseña](#correo-y-recuperación-de-contraseña)
+10. [Solución de Problemas](#solución-de-problemas)
+11. [Historial de Cambios](#historial-de-cambios)
 
 ---
 
@@ -406,6 +407,8 @@ Backend-Vens/
 POST   /api/auth/login           # Iniciar sesión
 POST   /api/auth/logout          # Cerrar sesión
 GET    /api/auth/user            # Usuario autenticado
+POST   /api/v1/auth/forgot-password  # Solicitar enlace de recuperación
+POST   /api/v1/auth/reset-password   # Restablecer con el token del correo
 
 GET    /api/pacientes            # Listar pacientes
 POST   /api/pacientes            # Crear paciente
@@ -424,6 +427,85 @@ POST   /api/consultas            # Registrar consulta
 GET    /api/medicos              # Listar médicos
 GET    /api/reportes/estadisticas # Estadísticas del centro
 ```
+
+---
+
+## 📧 Correo y Recuperación de Contraseña
+
+El flujo de "olvidé mi contraseña" funciona en dos pasos y depende del envío de correo:
+
+1. `POST /api/v1/auth/forgot-password` con `{ "email": "..." }` → envía un correo con un enlace al frontend.
+2. `POST /api/v1/auth/reset-password` con `{ "token", "email", "password", "password_confirmation" }` → cambia la contraseña y revoca los tokens de sesión activos.
+
+Por seguridad, el paso 1 **siempre** responde `200` con el mismo mensaje, exista o no la cuenta, para que el endpoint no sirva para averiguar qué correos están registrados. Las cuentas inactivas tampoco reciben el enlace.
+
+### Variables de entorno relacionadas
+
+```env
+# URL del frontend: se usa para armar el enlace del correo
+# Resultado: FRONTEND_URL/restablecer-contrasena?token=...&email=...
+FRONTEND_URL=http://localhost:5173
+```
+
+### Probar el flujo
+
+```bash
+curl -X POST http://localhost:8000/api/v1/auth/forgot-password \
+  -H "Content-Type: application/json" \
+  -d '{"email":"correo-real@ejemplo.com"}'
+```
+
+> Si se cambia cualquier variable `MAIL_*`, hay que ejecutar `docker compose exec app php artisan config:clear` para que Laravel tome el valor nuevo.
+>
+> Alternativa sin envío real: con `MAIL_MAILER=log` el mensaje completo, con el enlace y el token, se escribe en `src/storage/logs/laravel.log` en lugar de enviarse.
+
+### Con Gmail (correos reales)
+
+Google **no acepta la contraseña normal** de la cuenta para SMTP desde 2022. Hay que generar una **Contraseña de aplicación** de 16 caracteres:
+
+1. La cuenta debe tener la **Verificación en 2 pasos activada** (sin esto, la opción no aparece).
+   → https://myaccount.google.com/security
+2. Entrar a **Contraseñas de aplicaciones**: https://myaccount.google.com/apppasswords
+3. Escribir un nombre (ej. `Vens Backend`) y pulsar **Crear**.
+4. Google muestra una clave tipo `abcd efgh ijkl mnop` → **copiarla sin los espacios**.
+
+Luego en `src/.env`:
+
+```env
+MAIL_MAILER=smtp
+MAIL_HOST=smtp.gmail.com
+MAIL_PORT=587
+MAIL_USERNAME=tucuenta@gmail.com
+MAIL_PASSWORD=abcdefghijklmnop          # la contraseña de aplicación, sin espacios
+MAIL_FROM_ADDRESS="tucuenta@gmail.com"  # debe coincidir con MAIL_USERNAME
+MAIL_FROM_NAME="Centro Médico Vens"
+```
+
+Y aplicar los cambios:
+
+```bash
+docker compose exec app php artisan config:clear
+```
+
+**Puntos importantes:**
+
+- `MAIL_FROM_ADDRESS` tiene que ser la misma cuenta de Gmail (o un alias verificado en ella). Si no coincide, Gmail reescribe el remitente y el correo puede caer en spam.
+- En Laravel 11+ la variable es **`MAIL_SCHEME`**, no `MAIL_ENCRYPTION` (esta última ya no la lee nadie — ver `config/mail.php`). Con el puerto 587 no hace falta definirla: Laravel usa STARTTLS automáticamente. Si se prefiere el puerto 465, hay que añadir `MAIL_SCHEME=smtps`.
+- Una cuenta gratuita de Gmail tiene un **límite de ~500 correos al día**. Para producción real conviene un servicio transaccional (SendGrid, Mailgun, Amazon SES).
+- **Nunca subir la contraseña de aplicación al repositorio.** El archivo `src/.env` ya está en `.gitignore`; los valores de ejemplo van solo en `.env.example`.
+
+### Otros proveedores
+
+```env
+MAIL_MAILER=smtp
+MAIL_HOST=smtp.tu-proveedor.com
+MAIL_PORT=587
+MAIL_USERNAME=...
+MAIL_PASSWORD=...
+MAIL_FROM_ADDRESS="noreply@vens-flebologia.com"
+```
+
+> ⚠️ Nunca subir credenciales de correo al repositorio: `src/.env` está en `.gitignore` y los valores de ejemplo van solo en `.env.example`.
 
 ---
 
