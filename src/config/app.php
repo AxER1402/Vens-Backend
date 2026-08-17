@@ -56,6 +56,19 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Frontend URL
+    |--------------------------------------------------------------------------
+    |
+    | URL base de la aplicación cliente (React + Vite). Se utiliza para armar
+    | los enlaces que se envían por correo, como el de restablecimiento de
+    | contraseña, ya que este backend es una API pura y no expone vistas.
+    |
+    */
+
+    'frontend_url' => env('FRONTEND_URL', 'http://localhost:5173'),
+
+    /*
+    |--------------------------------------------------------------------------
     | Application Timezone
     |--------------------------------------------------------------------------
     |

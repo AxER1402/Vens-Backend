@@ -20,6 +20,12 @@ Route::prefix('v1')->group(function () {
     // Rutas públicas de autenticación
     Route::post('/auth/login', [AuthController::class, 'login']);
 
+    // Recuperación de contraseña (limitada a 5 intentos por minuto por IP)
+    Route::post('/auth/forgot-password', [AuthController::class, 'forgotPassword'])
+        ->middleware('throttle:5,1');
+    Route::post('/auth/reset-password', [AuthController::class, 'resetPassword'])
+        ->middleware('throttle:5,1');
+
     // Rutas protegidas con Laravel Sanctum
     Route::middleware('auth:sanctum')->group(function () {
         Route::post('/auth/logout', [AuthController::class, 'logout']);
