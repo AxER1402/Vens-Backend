@@ -74,12 +74,24 @@ abstract class ClinicalHistoryRequest extends FormRequest
             'frecuencia_respiratoria' => ['nullable', 'integer', 'min:5', 'max:80'],
             'temperatura' => ['nullable', 'numeric', 'min:30', 'max:45'],
             'peso' => ['nullable', 'numeric', 'min:0.5', 'max:500'],
+            'perimetro_tobillo' => ['nullable', 'numeric', 'min:5', 'max:120'],
+            'perimetro_pantorrilla' => ['nullable', 'numeric', 'min:5', 'max:120'],
             'ubicacion_patologia' => ['nullable', 'string', Rule::in(['MID', 'MII', 'BILATERAL'])],
+
+            // ── Diagnóstico CEAP ──────────────────────────────────────────────
+            // Clase clínica del CEAP (ej: C2a, C4b, C6): texto corto alfanumérico
+            'ceap_c' => ['nullable', 'string', 'max:10', 'regex:/^[A-Za-z0-9]+$/'],
 
             // ── Plan de tratamiento y escleroterapia ──────────────────────────
             'esclero_concentracion' => ['nullable', 'numeric', 'min:0', 'max:100'],
             'esclero_forma' => ['nullable', 'string', Rule::in(['Líquida', 'Espuma'])],
             'esclero_volumen' => ['nullable', 'numeric', 'min:0', 'max:999.99'],
+
+            // Qué se recetó en cada indicación marcada, indexado por el valor
+            // del catálogo: { "Venotónico": "Perivasc 950/50" }
+            'indicaciones_detalle' => ['nullable', 'array'],
+            'indicaciones_detalle.*' => ['nullable', 'string', 'max:255'],
+
             'indicaciones_otros' => ['nullable', 'string', 'max:255'],
 
             // ── Evolución y observaciones ─────────────────────────────────────
@@ -126,6 +138,7 @@ abstract class ClinicalHistoryRequest extends FormRequest
     {
         $validator->after(function (Validator $validator) {
             $this->validarSelecciones($validator);
+            $this->validarDetalleIndicaciones($validator);
             $this->validarRequisitosDeCierre($validator);
         });
     }
@@ -164,6 +177,30 @@ abstract class ClinicalHistoryRequest extends FormRequest
                         "El valor seleccionado no está permitido en la lista '{$categoria}'."
                     );
                 }
+            }
+        }
+    }
+
+    /**
+     * El detalle de las indicaciones se indexa por el valor del catálogo, así que
+     * cada clave debe ser una indicación existente.
+     */
+    protected function validarDetalleIndicaciones(Validator $validator): void
+    {
+        $detalle = $this->input('indicaciones_detalle');
+
+        if (! is_array($detalle) || $detalle === []) {
+            return;
+        }
+
+        $permitidos = ClinicalOption::byCategoria('indicaciones')->activas()->pluck('valor')->all();
+
+        foreach (array_keys($detalle) as $indicacion) {
+            if (! in_array($indicacion, $permitidos, true)) {
+                $validator->errors()->add(
+                    'indicaciones_detalle',
+                    "'{$indicacion}' no es una indicación válida del catálogo clínico."
+                );
             }
         }
     }
@@ -219,12 +256,23 @@ abstract class ClinicalHistoryRequest extends FormRequest
             'temperatura.min' => 'La temperatura registrada está fuera del rango clínico válido (30 °C a 45 °C).',
             'temperatura.max' => 'La temperatura registrada está fuera del rango clínico válido (30 °C a 45 °C).',
             'peso.numeric' => 'El peso debe ser un valor numérico.',
+            'perimetro_tobillo.numeric' => 'El perímetro del tobillo debe ser un valor numérico en centímetros.',
+            'perimetro_tobillo.min' => 'El perímetro del tobillo está fuera del rango válido (5 cm a 120 cm).',
+            'perimetro_tobillo.max' => 'El perímetro del tobillo está fuera del rango válido (5 cm a 120 cm).',
+            'perimetro_pantorrilla.numeric' => 'El perímetro de la pantorrilla debe ser un valor numérico en centímetros.',
+            'perimetro_pantorrilla.min' => 'El perímetro de la pantorrilla está fuera del rango válido (5 cm a 120 cm).',
+            'perimetro_pantorrilla.max' => 'El perímetro de la pantorrilla está fuera del rango válido (5 cm a 120 cm).',
             'ubicacion_patologia.in' => 'La ubicación de la patología debe ser: MID, MII o BILATERAL.',
+
+            'ceap_c.regex' => 'La clase clínica C solo admite letras y números (ej: C2a).',
+            'ceap_c.max' => 'La clase clínica C no puede superar los 10 caracteres.',
 
             'esclero_concentracion.numeric' => 'La concentración de la sustancia esclerosante debe ser numérica (%).',
             'esclero_concentracion.max' => 'La concentración no puede superar el 100 %.',
             'esclero_forma.in' => 'La forma de la sustancia esclerosante debe ser: Líquida o Espuma.',
             'esclero_volumen.numeric' => 'El volumen total debe ser un valor numérico (ml).',
+            'indicaciones_detalle.array' => 'El formato del detalle de las indicaciones no es válido.',
+            'indicaciones_detalle.*.max' => 'El detalle de cada indicación no puede superar los 255 caracteres.',
 
             'evolucion.in' => 'La evolución debe ser: Mejoría, Igual o Empeoramiento.',
             'estado_general.required_if' => 'Indique el estado general del paciente para finalizar la historia clínica.',

@@ -56,12 +56,29 @@ return new class extends Migration
             $table->unsignedSmallInteger('frecuencia_respiratoria')->nullable();
             $table->decimal('temperatura', 4, 1)->nullable();
             $table->decimal('peso', 5, 2)->nullable();
+
+            // Perimetría de la extremidad en centímetros: es la medida con la que
+            // se sigue el edema de una consulta a la siguiente
+            $table->decimal('perimetro_tobillo', 4, 1)->nullable();
+            $table->decimal('perimetro_pantorrilla', 4, 1)->nullable();
+
             $table->enum('ubicacion_patologia', ['MID', 'MII', 'BILATERAL'])->nullable();
+
+            // ── Diagnóstico CEAP ─────────────────────────────────────────────
+            // Clase clínica del CEAP tal como la anota el médico ('C2a', 'C6').
+            // Las demás casillas del panel viven en el catálogo clinical_options
+            $table->string('ceap_c', 10)->nullable();
 
             // ── Plan de tratamiento y escleroterapia ─────────────────────────
             $table->decimal('esclero_concentracion', 5, 2)->nullable();
             $table->enum('esclero_forma', ['Líquida', 'Espuma'])->nullable();
             $table->decimal('esclero_volumen', 5, 2)->nullable();
+
+            // Qué se recetó en cada indicación marcada, por valor del catálogo:
+            // { "Venotónico": "Perivasc 950/50", "AINEs": "Ibuprofeno 400 mg" }.
+            // Marcar la indicación dice el tipo de tratamiento; este detalle dice cuál
+            $table->json('indicaciones_detalle')->nullable();
+
             $table->string('indicaciones_otros', 255)->nullable();
 
             // ── Evolución y observaciones ────────────────────────────────────

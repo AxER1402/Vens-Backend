@@ -55,10 +55,14 @@ class ClinicalHistory extends Model
         'frecuencia_respiratoria',
         'temperatura',
         'peso',
+        'perimetro_tobillo',
+        'perimetro_pantorrilla',
         'ubicacion_patologia',
+        'ceap_c',
         'esclero_concentracion',
         'esclero_forma',
         'esclero_volumen',
+        'indicaciones_detalle',
         'indicaciones_otros',
         'evolucion',
         'estado_general',
@@ -85,6 +89,8 @@ class ClinicalHistory extends Model
         return [
             'fecha_consulta' => 'date:Y-m-d',
             'ultima_menstruacion' => 'date:Y-m-d',
+            // Medicamento recetado en cada indicación: { indicación: detalle }
+            'indicaciones_detalle' => 'array',
             // Documento vectorial del mapeo: { version, plantilla, objetos }
             'mapeo_venoso_datos' => 'array',
             'mapeo_venoso_updated_at' => 'datetime',
@@ -100,6 +106,8 @@ class ClinicalHistory extends Model
             'frecuencia_respiratoria' => 'integer',
             'temperatura' => 'decimal:1',
             'peso' => 'decimal:2',
+            'perimetro_tobillo' => 'decimal:1',
+            'perimetro_pantorrilla' => 'decimal:1',
             'esclero_concentracion' => 'decimal:2',
             'esclero_volumen' => 'decimal:2',
         ];
