@@ -57,10 +57,14 @@ class ClinicalHistoryManagementTest extends TestCase
             'frecuencia_respiratoria' => 18,
             'temperatura' => 36.6,
             'peso' => 68.5,
+            'perimetro_tobillo' => 24.5,
+            'perimetro_pantorrilla' => 36.0,
             'ubicacion_patologia' => 'BILATERAL',
+            'ceap_c' => 'C2a',
             'esclero_concentracion' => 1.0,
             'esclero_forma' => 'Espuma',
             'esclero_volumen' => 2.5,
+            'indicaciones_detalle' => ['Venotónico' => 'Perivasc 950/50'],
             'evolucion' => 'Mejoría',
             'estado_general' => 'Requiere nuevas sesiones',
             'notas' => 'Paciente tolera bien el procedimiento.',
@@ -68,6 +72,7 @@ class ClinicalHistoryManagementTest extends TestCase
                 'sintomas' => ['Calambres', 'Pesadez'],
                 'ceap_diagnostico' => ['Primaria', 'Superficial'],
                 'tx_zonas' => ['Telangiectasias'],
+                'indicaciones' => ['Venotónico'],
             ],
         ];
 
@@ -81,24 +86,36 @@ class ClinicalHistoryManagementTest extends TestCase
                     'patient_id' => $patient->id,
                     'estado_registro' => 'Finalizada',
                     'consulta_por' => 'Enfermedad',
+                    'ceap_c' => 'C2a',
                     'selecciones' => [
                         'sintomas' => ['Calambres', 'Pesadez'],
                         'ceap_diagnostico' => ['Primaria', 'Superficial'],
                         'tx_zonas' => ['Telangiectasias'],
+                        'indicaciones' => ['Venotónico'],
                         'enfermedades' => [],
                     ],
+                    'indicaciones_detalle' => ['Venotónico' => 'Perivasc 950/50'],
                 ],
             ]);
 
         $this->assertDatabaseHas('clinical_histories', [
             'patient_id' => $patient->id,
             'estado_registro' => 'Finalizada',
+            'ceap_c' => 'C2a',
+            'perimetro_tobillo' => 24.5,
+            'perimetro_pantorrilla' => 36.0,
             'created_by' => $this->medico()->id,
             'updated_by' => $this->medico()->id,
         ]);
 
-        // Las tres listas marcadas deben quedar registradas en la tabla pivote
-        $this->assertCount(5, ClinicalHistory::first()->options);
+        // Las cuatro listas marcadas deben quedar registradas en la tabla pivote
+        $this->assertCount(6, ClinicalHistory::first()->options);
+
+        // El medicamento concreto viaja aparte de la casilla marcada
+        $this->assertSame(
+            ['Venotónico' => 'Perivasc 950/50'],
+            ClinicalHistory::first()->indicaciones_detalle
+        );
     }
 
     public function test_draft_can_be_saved_with_only_the_patient(): void
@@ -166,6 +183,8 @@ class ClinicalHistoryManagementTest extends TestCase
                 'frecuencia_respiratoria' => 500,
                 'temperatura' => 80,
                 'peso' => -5,
+                'perimetro_tobillo' => 0.5,
+                'perimetro_pantorrilla' => 'treinta',
                 'ultima_menstruacion' => now()->addYear()->toDateString(),
             ]);
 
@@ -176,6 +195,8 @@ class ClinicalHistoryManagementTest extends TestCase
                 'frecuencia_respiratoria',
                 'temperatura',
                 'peso',
+                'perimetro_tobillo',
+                'perimetro_pantorrilla',
                 'ultima_menstruacion',
             ]);
     }
@@ -195,6 +216,36 @@ class ClinicalHistoryManagementTest extends TestCase
 
         $response->assertStatus(422)
             ->assertJsonValidationErrors('selecciones.sintomas');
+    }
+
+    public function test_indicacion_detail_must_reference_a_catalog_indication(): void
+    {
+        $patient = $this->paciente();
+
+        $response = $this->actingAs($this->medico(), 'sanctum')
+            ->postJson('/api/v1/clinical-histories', [
+                'patient_id' => $patient->id,
+                'estado_registro' => 'Borrador',
+                'indicaciones_detalle' => ['Indicación inventada' => 'Algo'],
+            ]);
+
+        $response->assertStatus(422)
+            ->assertJsonValidationErrors('indicaciones_detalle');
+    }
+
+    public function test_ceap_c_only_accepts_letters_and_numbers(): void
+    {
+        $patient = $this->paciente();
+
+        $response = $this->actingAs($this->medico(), 'sanctum')
+            ->postJson('/api/v1/clinical-histories', [
+                'patient_id' => $patient->id,
+                'estado_registro' => 'Borrador',
+                'ceap_c' => 'C2-a',
+            ]);
+
+        $response->assertStatus(422)
+            ->assertJsonValidationErrors('ceap_c');
     }
 
     public function test_receptionist_cannot_register_a_clinical_history(): void

@@ -40,8 +40,10 @@ class ClinicalOptionSeeder extends Seeder
             'tx_zonas' => [
                 'Telangiectasias', 'Reticulares', 'Varicosas trunculares', 'Perforantes',
             ],
+            // El nombre de la indicación dice el tipo de tratamiento; el medicamento
+            // concreto se escribe por consulta en clinical_histories.indicaciones_detalle
             'indicaciones' => [
-                'Venotónico: Perivasc 950/50', 'AINEs', 'Crema', 'Medias Compresivas',
+                'Venotónico', 'AINEs', 'Crema', 'Medias Compresivas',
                 'No se prescribe tratamiento adicional',
             ],
             'observaciones' => [
