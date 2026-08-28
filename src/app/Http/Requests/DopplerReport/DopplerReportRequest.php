@@ -45,10 +45,15 @@ abstract class DopplerReportRequest extends FormRequest
             $reglas["{$lado}_perforantes"] = ['nullable', 'string', 'max:255'];
             $reglas["{$lado}_trombosis"] = ['nullable', 'string', 'max:255'];
 
-            foreach (DopplerReport::VASOS as $vaso) {
-                $reglas["{$lado}_{$vaso}"] = ['nullable', 'string', 'max:255'];
-                // El diámetro se mide en milímetros (ej: 4.1)
-                $reglas["{$lado}_{$vaso}_diam"] = ['nullable', 'numeric', 'min:0', 'max:99.99'];
+            // Lista ordenada de segmentos: la posición identifica al segmento,
+            // por eso el formulario envía siempre las cinco, vacías o no
+            $reglas["{$lado}_segmentos"] = ['nullable', 'array', 'max:' . DopplerReport::TOTAL_SEGMENTOS];
+            $reglas["{$lado}_segmentos.*.nombre"] = ['nullable', 'string', 'max:60'];
+            $reglas["{$lado}_segmentos.*.observaciones"] = ['nullable', 'string', 'max:255'];
+
+            // Sin tope superior: solo se exige que sea un número no negativo
+            foreach (DopplerReport::MEDIDAS_SEGMENTO as $medida) {
+                $reglas["{$lado}_segmentos.*.{$medida}"] = ['nullable', 'numeric', 'min:0'];
             }
         }
 
@@ -159,14 +164,24 @@ abstract class DopplerReportRequest extends FormRequest
             'conclusion.max' => 'La conclusión del estudio es demasiado extensa.',
         ];
 
-        // Un diámetro mal digitado es el error más frecuente al informar el estudio
+        // Una medida mal digitada es el error más frecuente al informar el estudio
+        $porMedida = [
+            'diametro' => ['El diámetro', 'milímetros (ej: 4.1)'],
+            'diametro_max' => ['El diámetro máximo', 'milímetros (ej: 5.2)'],
+            'velocidad' => ['La velocidad', 'centímetros por segundo (ej: 32)'],
+            'duracion' => ['La duración del reflujo', 'segundos (ej: 0.9)'],
+        ];
+
         foreach (DopplerReport::LADOS as $lado) {
-            foreach (DopplerReport::VASOS as $vaso) {
-                $campo = "{$lado}_{$vaso}_diam";
-                $mensajes["{$campo}.numeric"] = 'El diámetro debe ser un valor numérico en milímetros (ej: 4.1).';
-                $mensajes["{$campo}.min"] = 'El diámetro no puede ser negativo.';
-                $mensajes["{$campo}.max"] = 'El diámetro registrado está fuera del rango válido (0 a 99.99 mm).';
+            foreach ($porMedida as $medida => [$nombre, $unidad]) {
+                $campo = "{$lado}_segmentos.*.{$medida}";
+                $mensajes["{$campo}.numeric"] = "{$nombre} debe ser un valor numérico en {$unidad}.";
+                $mensajes["{$campo}.min"] = "{$nombre} no puede ser negativa.";
             }
+
+            $mensajes["{$lado}_segmentos.max"] = 'Un miembro no puede informar más de '
+                . DopplerReport::TOTAL_SEGMENTOS . ' segmentos.';
+            $mensajes["{$lado}_segmentos.*.nombre.max"] = 'El nombre del segmento es demasiado largo.';
         }
 
         return $mensajes;

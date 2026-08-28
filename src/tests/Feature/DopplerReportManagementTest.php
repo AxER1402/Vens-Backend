@@ -3,6 +3,7 @@
 namespace Tests\Feature;
 
 use App\Models\ClinicalHistory;
+use App\Models\DopplerReport;
 use App\Models\Patient;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -54,16 +55,47 @@ class DopplerReportManagementTest extends TestCase
     {
         return [
             "{$lado}_profundo" => 'Eje venoso profundo permeable y compresible en toda su extensión.',
-            "{$lado}_cayado_int" => 'Suficiente.',
-            "{$lado}_cayado_int_diam" => $diametro,
-            "{$lado}_tronco_int" => 'Permeable, suficiente.',
-            "{$lado}_tronco_int_diam" => $diametro - 0.5,
-            "{$lado}_cayado_ext" => 'Suficiente.',
-            "{$lado}_cayado_ext_diam" => 3.2,
-            "{$lado}_tronco_ext" => 'Permeable, suficiente.',
-            "{$lado}_tronco_ext_diam" => 2.8,
+            "{$lado}_segmentos" => $this->segmentos($diametro),
             "{$lado}_perforantes" => 'No se observan perforantes insuficientes.',
             "{$lado}_trombosis" => 'No se observan signos de trombosis en los vasos evaluados.',
+        ];
+    }
+
+    /**
+     * Las cinco posiciones que informa un miembro: los tres segmentos fijos y
+     * los dos que nombra el médico. La última queda vacía a propósito, que es
+     * como suele guardarse cuando no se evaluó nada más.
+     *
+     * @return array<int, array<string, string|float|null>>
+     */
+    private function segmentos(float $diametro): array
+    {
+        return [
+            $this->segmento('SFJ', $diametro, 38.5, 1.2, 'Reflujo en el cayado.'),
+            $this->segmento('GSV Muslo', $diametro - 0.5, 24.0, 0.8, 'Permeable, suficiente.'),
+            $this->segmento('GSV Pierna', 3.2, 18.0, 0.4, 'Permeable, suficiente.'),
+            $this->segmento('Perforante de Cockett', 2.8, 12.0, 0.6, 'Insuficiente.'),
+            $this->segmento(null, null, null, null, null),
+        ];
+    }
+
+    /**
+     * @return array<string, string|float|null>
+     */
+    private function segmento(
+        ?string $nombre,
+        ?float $diametroMax,
+        ?float $velocidad,
+        ?float $duracion,
+        ?string $observaciones,
+    ): array {
+        return [
+            'nombre' => $nombre,
+            'diametro_max' => $diametroMax,
+            'velocidad' => $velocidad,
+            'duracion' => $duracion,
+            'observaciones' => $observaciones,
+            'diametro' => $diametroMax === null ? null : $diametroMax - 0.4,
         ];
     }
 
@@ -93,16 +125,26 @@ class DopplerReportManagementTest extends TestCase
                     'patient_id' => $patient->id,
                     'clinical_history_id' => $consulta->id,
                     'estado_registro' => 'Finalizada',
-                    'der_cayado_int' => 'Suficiente.',
                     'izq_perforantes' => 'No se observan perforantes insuficientes.',
                 ],
             ]);
 
+        // Los segmentos se guardan como lista ordenada: la posición identifica
+        // al segmento y el nombre viaja con él
+        $reporte = DopplerReport::first();
+        $this->assertCount(5, $reporte->der_segmentos);
+        $this->assertSame('SFJ', $reporte->der_segmentos[0]['nombre']);
+        $this->assertSame(4.1, $reporte->der_segmentos[0]['diametro_max']);
+        $this->assertSame(38.5, $reporte->der_segmentos[0]['velocidad']);
+        $this->assertSame(1.2, $reporte->der_segmentos[0]['duracion']);
+        $this->assertSame('Perforante de Cockett', $reporte->der_segmentos[3]['nombre']);
+        $this->assertNull($reporte->izq_segmentos[4]['nombre']);
+        // JSON no distingue 5 de 5.0, por eso aquí la comparación es laxa
+        $this->assertEquals(5.0, $reporte->izq_segmentos[0]['diametro_max']);
+
         $this->assertDatabaseHas('doppler_reports', [
             'patient_id' => $patient->id,
             'clinical_history_id' => $consulta->id,
-            'der_cayado_int_diam' => 4.1,
-            'izq_cayado_int_diam' => 5.0,
             'estado_registro' => 'Finalizada',
             'created_by' => $this->medico()->id,
             'updated_by' => $this->medico()->id,
@@ -155,7 +197,7 @@ class DopplerReportManagementTest extends TestCase
             ->assertJsonValidationErrors('conclusion');
     }
 
-    public function test_diameters_are_validated_as_numbers_within_valid_ranges(): void
+    public function test_segment_measures_must_be_non_negative_numbers(): void
     {
         $patient = $this->paciente();
 
@@ -163,19 +205,51 @@ class DopplerReportManagementTest extends TestCase
             ->postJson('/api/v1/doppler-reports', [
                 'patient_id' => $patient->id,
                 'estado_registro' => 'Borrador',
-                'der_cayado_int_diam' => 'cuatro',
-                'der_tronco_int_diam' => -1,
-                'izq_cayado_ext_diam' => 250,
+                'der_segmentos' => [
+                    ['nombre' => 'SFJ', 'diametro' => 'cuatro'],
+                    ['nombre' => 'GSV Muslo', 'diametro_max' => -1],
+                    ['nombre' => 'GSV Pierna', 'velocidad' => 'rápida'],
+                ],
+                'izq_segmentos' => [
+                    ['nombre' => 'SFJ', 'duracion' => -3],
+                ],
                 'fecha_estudio' => now()->addWeek()->toDateString(),
             ]);
 
         $response->assertStatus(422)
             ->assertJsonValidationErrors([
-                'der_cayado_int_diam',
-                'der_tronco_int_diam',
-                'izq_cayado_ext_diam',
+                'der_segmentos.0.diametro',
+                'der_segmentos.1.diametro_max',
+                'der_segmentos.2.velocidad',
+                'izq_segmentos.0.duracion',
                 'fecha_estudio',
             ]);
+    }
+
+    public function test_segment_measures_have_no_upper_limit(): void
+    {
+        $patient = $this->paciente();
+
+        $response = $this->actingAs($this->medico(), 'sanctum')
+            ->postJson('/api/v1/doppler-reports', [
+                'patient_id' => $patient->id,
+                'estado_registro' => 'Borrador',
+                'der_segmentos' => [
+                    [
+                        'nombre' => 'SFJ',
+                        'diametro_max' => 180.5,
+                        'velocidad' => 1250,
+                        'duracion' => 140,
+                        'diametro' => 175,
+                    ],
+                ],
+            ]);
+
+        $response->assertStatus(201);
+
+        $segmento = DopplerReport::first()->der_segmentos[0];
+        $this->assertEquals(180.5, $segmento['diametro_max']);
+        $this->assertEquals(1250, $segmento['velocidad']);
     }
 
     public function test_report_cannot_be_attached_to_a_consultation_of_another_patient(): void
@@ -225,7 +299,9 @@ class DopplerReportManagementTest extends TestCase
 
         $response = $this->actingAs($this->medico(), 'sanctum')
             ->putJson("/api/v1/doppler-reports/{$creado}", [
-                'der_cayado_int_diam' => 6.4,
+                'der_segmentos' => [
+                    ['nombre' => 'SFJ', 'diametro' => 6.4, 'observaciones' => 'Reflujo mayor a 1 s.'],
+                ],
                 'conclusion' => 'Insuficiencia del cayado de safena interna derecha.',
             ]);
 
@@ -233,7 +309,9 @@ class DopplerReportManagementTest extends TestCase
             ->assertJson([
                 'success' => true,
                 'data' => [
-                    'der_cayado_int_diam' => '6.40',
+                    'der_segmentos' => [
+                        ['nombre' => 'SFJ', 'diametro' => 6.4, 'observaciones' => 'Reflujo mayor a 1 s.'],
+                    ],
                     'conclusion' => 'Insuficiencia del cayado de safena interna derecha.',
                 ],
             ]);
