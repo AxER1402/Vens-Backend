@@ -25,12 +25,30 @@ class DopplerReport extends Model
     public const LADOS = ['der', 'izq'];
 
     /**
-     * Vasos del sistema venoso superficial que se miden en cada lado.
-     * Cada uno se informa con su hallazgo y su diámetro ({vaso}_diam).
+     * Segmentos del sistema venoso superficial cuyo nombre es siempre el mismo.
+     * Ocupan las tres primeras posiciones de la lista de cada lado.
      *
      * @var array<int, string>
      */
-    public const VASOS = ['cayado_int', 'tronco_int', 'cayado_ext', 'tronco_ext'];
+    public const SEGMENTOS_FIJOS = ['SFJ', 'GSV Muslo', 'GSV Pierna'];
+
+    /**
+     * Segmentos que informa cada lado: los tres fijos más dos que el médico
+     * nombra según lo que haya evaluado en el estudio.
+     */
+    public const TOTAL_SEGMENTOS = 5;
+
+    /**
+     * Medidas numéricas de cada segmento, en el orden en que se informan. La
+     * duración es la del reflujo, en segundos.
+     *
+     * No llevan tope superior a propósito: cualquier techo que se ponga acaba
+     * rechazando el hallazgo excepcional en vez del error de digitación, y el
+     * estudio se informa con lo que midió el equipo.
+     *
+     * @var array<int, string>
+     */
+    public const MEDIDAS_SEGMENTO = ['diametro_max', 'velocidad', 'duracion', 'diametro'];
 
     protected $table = 'doppler_reports';
 
@@ -41,27 +59,13 @@ class DopplerReport extends Model
 
         // ── Miembro inferior derecho (MID) ────────────────────────────────
         'der_profundo',
-        'der_cayado_int',
-        'der_cayado_int_diam',
-        'der_tronco_int',
-        'der_tronco_int_diam',
-        'der_cayado_ext',
-        'der_cayado_ext_diam',
-        'der_tronco_ext',
-        'der_tronco_ext_diam',
+        'der_segmentos',
         'der_perforantes',
         'der_trombosis',
 
         // ── Miembro inferior izquierdo (MII) ──────────────────────────────
         'izq_profundo',
-        'izq_cayado_int',
-        'izq_cayado_int_diam',
-        'izq_tronco_int',
-        'izq_tronco_int_diam',
-        'izq_cayado_ext',
-        'izq_cayado_ext_diam',
-        'izq_tronco_ext',
-        'izq_tronco_ext_diam',
+        'izq_segmentos',
         'izq_perforantes',
         'izq_trombosis',
 
@@ -77,14 +81,8 @@ class DopplerReport extends Model
         return [
             'fecha_estudio' => 'date:Y-m-d',
             'activo' => 'boolean',
-            'der_cayado_int_diam' => 'decimal:2',
-            'der_tronco_int_diam' => 'decimal:2',
-            'der_cayado_ext_diam' => 'decimal:2',
-            'der_tronco_ext_diam' => 'decimal:2',
-            'izq_cayado_int_diam' => 'decimal:2',
-            'izq_tronco_int_diam' => 'decimal:2',
-            'izq_cayado_ext_diam' => 'decimal:2',
-            'izq_tronco_ext_diam' => 'decimal:2',
+            'der_segmentos' => 'array',
+            'izq_segmentos' => 'array',
         ];
     }
 

@@ -35,15 +35,12 @@ return new class extends Migration
                 // Eje venoso profundo: hallazgo descriptivo
                 $table->text("{$lado}_profundo")->nullable();
 
-                // Sistema venoso superficial: hallazgo + diámetro medido en mm
-                $table->string("{$lado}_cayado_int", 255)->nullable();
-                $table->decimal("{$lado}_cayado_int_diam", 5, 2)->nullable();
-                $table->string("{$lado}_tronco_int", 255)->nullable();
-                $table->decimal("{$lado}_tronco_int_diam", 5, 2)->nullable();
-                $table->string("{$lado}_cayado_ext", 255)->nullable();
-                $table->decimal("{$lado}_cayado_ext_diam", 5, 2)->nullable();
-                $table->string("{$lado}_tronco_ext", 255)->nullable();
-                $table->decimal("{$lado}_tronco_ext_diam", 5, 2)->nullable();
+                // Sistema venoso superficial. Se guarda como lista ordenada y no
+                // como columnas sueltas porque los tres primeros segmentos son
+                // fijos (SFJ, GSV Muslo, GSV Pierna) y los dos últimos los nombra
+                // el médico según lo que haya evaluado. Cada posición lleva:
+                // { nombre, diametro_max, velocidad, duracion, observaciones, diametro }
+                $table->json("{$lado}_segmentos")->nullable();
 
                 // Perforantes y signos de trombosis
                 $table->string("{$lado}_perforantes", 255)->nullable();
