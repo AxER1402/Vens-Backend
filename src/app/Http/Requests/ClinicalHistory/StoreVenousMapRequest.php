@@ -83,7 +83,6 @@ class StoreVenousMapRequest extends FormRequest
                 $campo = "datos.objetos.{$indice}";
 
                 $this->validarZona($validator, $campo, $objeto);
-                $this->validarColor($validator, $campo, $objeto);
 
                 match ($tipo) {
                     'trazo' => $puntosTotales += $this->validarTrazo($validator, $campo, $objeto),
@@ -119,7 +118,11 @@ class StoreVenousMapRequest extends FormRequest
      */
     private function validarTrazo(Validator $validator, string $campo, array $objeto): int
     {
-        $this->validarHallazgo($validator, $campo, $objeto, 'trazo');
+        $this->validarVocabulario($validator, $campo, $objeto, 'trazo');
+
+        // El color solo es obligatorio con el vocabulario nuevo: en el heredado
+        // lo aportaba el propio hallazgo.
+        $this->validarColor($validator, $campo, $objeto, isset($objeto['trayecto']));
 
         $puntos = $objeto['puntos'] ?? null;
 
@@ -161,7 +164,8 @@ class StoreVenousMapRequest extends FormRequest
      */
     private function validarMarcador(Validator $validator, string $campo, array $objeto): void
     {
-        $this->validarHallazgo($validator, $campo, $objeto, 'marcador');
+        $this->validarVocabulario($validator, $campo, $objeto, 'marcador');
+        $this->validarColor($validator, $campo, $objeto, false);
         $this->validarAncla($validator, $campo, $objeto);
     }
 
@@ -172,6 +176,7 @@ class StoreVenousMapRequest extends FormRequest
      */
     private function validarTextual(Validator $validator, string $campo, array $objeto, string $tipo): void
     {
+        $this->validarColor($validator, $campo, $objeto, false);
         $this->validarAncla($validator, $campo, $objeto);
 
         $texto = $objeto['texto'] ?? null;
@@ -210,18 +215,53 @@ class StoreVenousMapRequest extends FormRequest
     }
 
     /**
-     * El hallazgo debe existir en el catálogo y corresponder al tipo de objeto:
-     * un marcador no puede llevar un hallazgo de trazo.
+     * Qué se dibujó: un tipo de trayecto si es un trazo, un símbolo si es un
+     * hallazgo puntual. Es el eje que dice *qué* es la marca; el color, aparte,
+     * dice en qué estado está.
+     *
+     * Se acepta también el `hallazgo` del vocabulario anterior, que mezclaba
+     * ambas cosas. No es por compatibilidad decorativa: al reabrir un mapeo
+     * archivado el editor devuelve sus objetos tal y como los leyó, y rechazar
+     * ese vocabulario haría que guardar una corrección sobre un mapeo viejo
+     * fallara entero.
      *
      * @param  array<string, mixed>  $objeto
      */
-    private function validarHallazgo(Validator $validator, string $campo, array $objeto, string $tipo): void
+    private function validarVocabulario(Validator $validator, string $campo, array $objeto, string $tipo): void
     {
+        [$clave, $ids] = $tipo === 'trazo'
+            ? ['trayecto', Catalogo::idsTrayecto()]
+            : ['marcador', Catalogo::idsMarcador()];
+
+        $valor = $objeto[$clave] ?? null;
+
+        if ($valor !== null) {
+            if (! is_string($valor) || ! in_array($valor, $ids, true)) {
+                $validator->errors()->add(
+                    "{$campo}.{$clave}",
+                    $tipo === 'trazo'
+                        ? 'El mapeo venoso contiene un trayecto que no está en el catálogo.'
+                        : 'El mapeo venoso contiene un marcador que no está en el catálogo.'
+                );
+            }
+
+            return;
+        }
+
+        // Vocabulario heredado: debe seguir correspondiendo al tipo de objeto,
+        // un marcador no puede llevar un hallazgo pensado para trazos.
         $hallazgo = $objeto['hallazgo'] ?? null;
 
-        if (! is_string($hallazgo) || ! in_array($hallazgo, Catalogo::idsHallazgo($tipo), true)) {
-            $validator->errors()->add("{$campo}.hallazgo", 'El mapeo venoso contiene un hallazgo que no está en el catálogo.');
+        if (is_string($hallazgo) && in_array($hallazgo, Catalogo::idsHallazgo($tipo), true)) {
+            return;
         }
+
+        $validator->errors()->add(
+            "{$campo}.{$clave}",
+            $tipo === 'trazo'
+                ? 'Cada trazo del mapeo venoso debe indicar su tipo de trayecto.'
+                : 'Cada hallazgo puntual del mapeo venoso debe indicar qué marca.'
+        );
     }
 
     /**
@@ -241,17 +281,35 @@ class StoreVenousMapRequest extends FormRequest
     }
 
     /**
-     * Color libre, para lo que no encaja en la leyenda clínica.
+     * Color, que en el mapeo es la lectura clínica del vaso y no un gusto: azul
+     * competente, rojo refluyente, negro trombosado. Por eso se archiva como
+     * referencia al catálogo ('rojo') y no como hexadecimal, y por eso en un
+     * trazo del vocabulario nuevo es obligatorio: un recorrido sin color no dice
+     * en qué estado está la vena.
+     *
+     * El hexadecimal se sigue admitiendo porque así se archivaron los mapeos
+     * anteriores a esta separación.
      *
      * @param  array<string, mixed>  $objeto
      */
-    private function validarColor(Validator $validator, string $campo, array $objeto): void
+    private function validarColor(Validator $validator, string $campo, array $objeto, bool $obligatorio): void
     {
         $color = $objeto['color'] ?? null;
 
-        if ($color !== null && (! is_string($color) || ! preg_match('/^#[0-9A-Fa-f]{6}$/', $color))) {
-            $validator->errors()->add("{$campo}.color", 'El color de un objeto del mapeo venoso no es válido.');
+        if ($color === null) {
+            if ($obligatorio) {
+                $validator->errors()->add("{$campo}.color", 'Cada trazo del mapeo venoso debe indicar su color, que es lo que expresa el hallazgo.');
+            }
+
+            return;
         }
+
+        if (is_string($color)
+            && (in_array($color, Catalogo::idsColor(), true) || preg_match('/^#[0-9A-Fa-f]{6}$/', $color))) {
+            return;
+        }
+
+        $validator->errors()->add("{$campo}.color", 'El color de un objeto del mapeo venoso no está en el catálogo.');
     }
 
     /**

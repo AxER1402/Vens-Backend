@@ -379,6 +379,10 @@ class ClinicalHistoryManagementTest extends TestCase
     /**
      * Documento vectorial mínimo pero completo, con un objeto de cada tipo.
      *
+     * Los trazos y los marcadores usan el vocabulario de tres ejes: el color da
+     * la lectura clínica del vaso y el trayecto o el marcador dicen qué se
+     * dibujó.
+     *
      * @param  array<int, array<string, mixed>>|null  $objetos
      * @return array<string, mixed>
      */
@@ -388,8 +392,8 @@ class ClinicalHistoryManagementTest extends TestCase
             'version' => 1,
             'plantilla' => 'merit-mmii-6-vistas',
             'objetos' => $objetos ?? [
-                ['tipo' => 'trazo', 'hallazgo' => 'safena_interna', 'puntos' => [[0.2, 0.3], [0.22, 0.45]]],
-                ['tipo' => 'marcador', 'hallazgo' => 'perforante', 'x' => 0.25, 'y' => 0.5, 'numero' => 1],
+                ['tipo' => 'trazo', 'color' => 'rojo', 'trayecto' => 'epifascial', 'puntos' => [[0.2, 0.3], [0.22, 0.45]]],
+                ['tipo' => 'marcador', 'color' => 'azul', 'marcador' => 'perforante', 'x' => 0.25, 'y' => 0.5, 'numero' => 1],
                 ['tipo' => 'anotacion', 'texto' => 'Reflujo al Valsalva', 'x' => 0.3, 'y' => 0.6, 'numero' => 1],
                 ['tipo' => 'texto', 'texto' => 'Control 6 semanas', 'x' => 0.7, 'y' => 0.2, 'tamano' => 16],
             ],
@@ -423,7 +427,9 @@ class ClinicalHistoryManagementTest extends TestCase
         $this->assertSame(1, $datos['version']);
         $this->assertSame('merit-mmii-6-vistas', $datos['plantilla']);
         $this->assertCount(4, $datos['objetos']);
-        $this->assertSame('safena_interna', $datos['objetos'][0]['hallazgo']);
+        $this->assertSame('epifascial', $datos['objetos'][0]['trayecto']);
+        $this->assertSame('rojo', $datos['objetos'][0]['color']);
+        $this->assertSame('perforante', $datos['objetos'][1]['marcador']);
         $this->assertNotNull(ClinicalHistory::find($historia)->mapeo_venoso_updated_at);
     }
 
@@ -455,34 +461,108 @@ class ClinicalHistoryManagementTest extends TestCase
         $historia = $this->historiaEnBorrador();
 
         $this->guardarMapeo($historia, [
-            ['tipo' => 'marcador', 'hallazgo' => 'perforante', 'x' => 1.4, 'y' => 0.5],
+            ['tipo' => 'marcador', 'color' => 'azul', 'marcador' => 'perforante', 'x' => 1.4, 'y' => 0.5],
         ])->assertStatus(422)->assertJsonValidationErrors('datos.objetos.0.x');
 
         $this->assertNull(ClinicalHistory::find($historia)->mapeo_venoso_datos);
     }
 
-    public function test_venous_map_rejects_a_finding_outside_the_catalog(): void
+    public function test_venous_map_rejects_a_marker_outside_the_catalog(): void
     {
         Storage::fake('public');
         $historia = $this->historiaEnBorrador();
 
         $this->guardarMapeo($historia, [
-            ['tipo' => 'marcador', 'hallazgo' => 'hallazgo_inventado', 'x' => 0.2, 'y' => 0.5],
-        ])->assertStatus(422)->assertJsonValidationErrors('datos.objetos.0.hallazgo');
+            ['tipo' => 'marcador', 'color' => 'azul', 'marcador' => 'marcador_inventado', 'x' => 0.2, 'y' => 0.5],
+        ])->assertStatus(422)->assertJsonValidationErrors('datos.objetos.0.marcador');
+    }
+
+    public function test_venous_map_rejects_a_route_outside_the_catalog(): void
+    {
+        Storage::fake('public');
+        $historia = $this->historiaEnBorrador();
+
+        $this->guardarMapeo($historia, [
+            ['tipo' => 'trazo', 'color' => 'rojo', 'trayecto' => 'trayecto_inventado', 'puntos' => [[0.2, 0.3], [0.3, 0.4]]],
+        ])->assertStatus(422)->assertJsonValidationErrors('datos.objetos.0.trayecto');
     }
 
     /**
-     * Un marcador no puede llevar un hallazgo pensado para trazos: el catálogo
-     * distingue los dos tipos y el reporte los lee por separado.
+     * Los dos troncos safenos son un tipo de recorrido más, no un eje aparte:
+     * se eligen en la misma lista que el resto de trayectos.
      */
-    public function test_venous_map_rejects_a_finding_of_the_wrong_kind(): void
+    public function test_venous_map_accepts_a_named_saphenous_trunk_as_a_route(): void
+    {
+        Storage::fake('public');
+        $historia = $this->historiaEnBorrador();
+
+        $this->guardarMapeo($historia, [
+            ['tipo' => 'trazo', 'color' => 'rojo', 'trayecto' => 'safena_interna', 'puntos' => [[0.2, 0.3], [0.3, 0.4]]],
+            ['tipo' => 'trazo', 'color' => 'auto', 'trayecto' => 'safena_externa', 'puntos' => [[0.9, 0.3], [0.92, 0.4]]],
+        ])->assertStatus(200);
+
+        $objetos = ClinicalHistory::find($historia)->mapeo_venoso_datos['objetos'];
+        $this->assertSame('safena_interna', $objetos[0]['trayecto']);
+        $this->assertSame('safena_externa', $objetos[1]['trayecto']);
+    }
+
+    /**
+     * El color no es un gusto: es la lectura clínica del vaso. Un recorrido sin
+     * color no dice si la vena es competente, refluyente o trombosada, así que
+     * la lámina se podría dibujar pero el informe no se podría redactar.
+     */
+    public function test_venous_map_rejects_a_stroke_without_a_colour(): void
+    {
+        Storage::fake('public');
+        $historia = $this->historiaEnBorrador();
+
+        $this->guardarMapeo($historia, [
+            ['tipo' => 'trazo', 'trayecto' => 'subfascial', 'puntos' => [[0.2, 0.3], [0.3, 0.4]]],
+        ])->assertStatus(422)->assertJsonValidationErrors('datos.objetos.0.color');
+    }
+
+    public function test_venous_map_rejects_a_colour_outside_the_catalog(): void
+    {
+        Storage::fake('public');
+        $historia = $this->historiaEnBorrador();
+
+        $this->guardarMapeo($historia, [
+            ['tipo' => 'trazo', 'color' => 'turquesa', 'trayecto' => 'subfascial', 'puntos' => [[0.2, 0.3], [0.3, 0.4]]],
+        ])->assertStatus(422)->assertJsonValidationErrors('datos.objetos.0.color');
+    }
+
+    /**
+     * Al reabrir un mapeo archivado el editor devuelve sus objetos tal y como
+     * los leyó, con el vocabulario anterior a la separación en color, trayecto y
+     * marcador. Si el backend lo rechazara, guardar una corrección sobre un
+     * mapeo viejo fallaría entero y el médico perdería el trabajo.
+     */
+    public function test_venous_map_still_accepts_the_legacy_finding_vocabulary(): void
+    {
+        Storage::fake('public');
+        $historia = $this->historiaEnBorrador();
+
+        $this->guardarMapeo($historia, [
+            ['tipo' => 'trazo', 'hallazgo' => 'safena_interna', 'color' => '#0C7D8C', 'puntos' => [[0.2, 0.3], [0.22, 0.45]]],
+            ['tipo' => 'marcador', 'hallazgo' => 'perforante', 'x' => 0.25, 'y' => 0.5, 'numero' => 1],
+        ])->assertStatus(200);
+
+        $this->assertCount(2, ClinicalHistory::find($historia)->mapeo_venoso_datos['objetos']);
+    }
+
+    /**
+     * Con el vocabulario heredado, un marcador no puede llevar un hallazgo
+     * pensado para trazos: el catálogo distingue los dos tipos y el reporte los
+     * lee por separado.
+     */
+    public function test_venous_map_rejects_a_legacy_finding_of_the_wrong_kind(): void
     {
         Storage::fake('public');
         $historia = $this->historiaEnBorrador();
 
         $this->guardarMapeo($historia, [
             ['tipo' => 'marcador', 'hallazgo' => 'safena_interna', 'x' => 0.2, 'y' => 0.5],
-        ])->assertStatus(422)->assertJsonValidationErrors('datos.objetos.0.hallazgo');
+        ])->assertStatus(422)->assertJsonValidationErrors('datos.objetos.0.marcador');
     }
 
     public function test_venous_map_rejects_a_stroke_with_a_single_point(): void
@@ -491,7 +571,7 @@ class ClinicalHistoryManagementTest extends TestCase
         $historia = $this->historiaEnBorrador();
 
         $this->guardarMapeo($historia, [
-            ['tipo' => 'trazo', 'hallazgo' => 'varice', 'puntos' => [[0.2, 0.3]]],
+            ['tipo' => 'trazo', 'color' => 'rojo', 'trayecto' => 'subfascial', 'puntos' => [[0.2, 0.3]]],
         ])->assertStatus(422)->assertJsonValidationErrors('datos.objetos.0.puntos');
     }
 
@@ -516,7 +596,7 @@ class ClinicalHistoryManagementTest extends TestCase
         $historia = $this->historiaEnBorrador();
 
         $puntos = array_fill(0, 4000, [0.5, 0.5]);
-        $trazo = fn () => ['tipo' => 'trazo', 'hallazgo' => 'varice', 'puntos' => $puntos];
+        $trazo = fn () => ['tipo' => 'trazo', 'color' => 'rojo', 'trayecto' => 'subfascial', 'puntos' => $puntos];
 
         $this->guardarMapeo($historia, array_fill(0, 6, $trazo()))
             ->assertStatus(422)
@@ -545,7 +625,39 @@ class ClinicalHistoryManagementTest extends TestCase
         $response->assertStatus(200)
             ->assertJsonPath('data.plantilla.id', 'merit-mmii-6-vistas')
             ->assertJsonCount(6, 'data.zonas')
-            ->assertJsonCount(10, 'data.hallazgos');
+            // Los seis de la lámina más el «Auto» con el que abre el editor
+            ->assertJsonCount(7, 'data.colores')
+            // Los seis patrones de la lámina más los dos troncos safenos
+            ->assertJsonCount(8, 'data.trayectos')
+            ->assertJsonCount(5, 'data.marcadores')
+            // El vocabulario heredado no se publica: el editor no debe volver a
+            // ofrecerlo.
+            ->assertJsonMissingPath('data.hallazgos');
+    }
+
+    /**
+     * Los `parametros` de un trayecto viajan siempre como objeto.
+     *
+     * Un array vacío de PHP se serializa como `[]`, así que los trayectos sin
+     * parámetros llegarían al editor con una lista donde el resto trae un
+     * diccionario. Es la incoherencia que rompe en el cliente meses después.
+     */
+    public function test_venous_map_catalog_serialises_route_parameters_as_objects(): void
+    {
+        $respuesta = $this->actingAs($this->medico(), 'sanctum')
+            ->getJson('/api/v1/venous-map/catalog');
+
+        $porId = array_column($respuesta->json('data.trayectos'), null, 'id');
+        $this->assertSame(['amplitud' => 3, 'longitud' => 9], $porId['epifascial']['parametros']);
+
+        // Sobre el cuerpo sin decodificar: al pasar por json() un objeto vacío
+        // vuelve a ser un array de PHP y la comprobación se perdería.
+        $this->assertStringContainsString(
+            '"parametros":{}',
+            $respuesta->getContent(),
+            'Un trayecto sin parámetros se serializó como lista en vez de como objeto.'
+        );
+        $this->assertStringNotContainsString('"parametros":[]', $respuesta->getContent());
     }
 
     public function test_venous_map_catalog_requires_authentication(): void

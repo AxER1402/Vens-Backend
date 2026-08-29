@@ -115,8 +115,11 @@ class ReporteDescargaTest extends TestCase
                 'version' => 1,
                 'plantilla' => 'merit-mmii-6-vistas',
                 'objetos' => [
-                    ['tipo' => 'trazo', 'hallazgo' => 'safena_interna', 'puntos' => [[0.20, 0.30], [0.22, 0.45]]],
-                    ['tipo' => 'marcador', 'hallazgo' => 'perforante', 'x' => 0.25, 'y' => 0.50, 'numero' => 1],
+                    ['tipo' => 'trazo', 'color' => 'rojo', 'trayecto' => 'safena_interna', 'puntos' => [[0.20, 0.30], [0.22, 0.45]]],
+                    ['tipo' => 'marcador', 'color' => 'azul', 'marcador' => 'perforante', 'x' => 0.25, 'y' => 0.50, 'numero' => 1],
+                    // Objeto del vocabulario heredado: el informe de un mapeo
+                    // archivado antes de separar color, trayecto y marcador
+                    // tiene que seguir imprimiéndose con su nombre.
                     ['tipo' => 'marcador', 'hallazgo' => 'cayado', 'x' => 0.70, 'y' => 0.20, 'numero' => 2],
                     ['tipo' => 'anotacion', 'texto' => 'Reflujo al Valsalva', 'x' => 0.30, 'y' => 0.60, 'numero' => 1],
                 ],
