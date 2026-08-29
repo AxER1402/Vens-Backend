@@ -9,6 +9,7 @@ use App\Http\Requests\ClinicalHistory\UpdateClinicalHistoryRequest;
 use App\Models\ClinicalHistory;
 use App\Models\ClinicalOption;
 use App\Models\Patient;
+use App\Support\MapeoVenoso\Catalogo;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -208,10 +209,14 @@ class ClinicalHistoryController extends Controller
             ], 422);
         }
 
-        if (strlen($binario) > StoreVenousMapRequest::MAX_BYTES) {
+        $maxBytes = Catalogo::limite('max_bytes_png');
+
+        if (strlen($binario) > $maxBytes) {
+            $mb = round($maxBytes / 1024 / 1024);
+
             return response()->json([
                 'success' => false,
-                'message' => 'El mapeo venoso supera el tamaño máximo permitido (5 MB).',
+                'message' => "El mapeo venoso supera el tamaño máximo permitido ({$mb} MB).",
             ], 422);
         }
 
@@ -220,12 +225,23 @@ class ClinicalHistoryController extends Controller
 
         Storage::disk('public')->put($ruta, $binario);
 
-        $clinicalHistory->update([
+        $cambios = [
             'mapeo_venoso_path' => $ruta,
-            'mapeo_venoso_datos' => $request->input('datos'),
             'mapeo_venoso_updated_at' => now(),
             'updated_by' => auth()->id(),
-        ]);
+        ];
+
+        // Solo se toca el documento vectorial si vino en la petición. Asignarlo
+        // sin más dejaría en NULL el mapeo editable cada vez que un cliente
+        // enviara únicamente la imagen —el caso que este método declara
+        // soportar—, y en la consulta siguiente el médico tendría que redibujar
+        // el mapeo entero. Es el mismo cuidado que update() tiene con las
+        // selecciones.
+        if ($request->has('datos')) {
+            $cambios['mapeo_venoso_datos'] = $request->input('datos');
+        }
+
+        $clinicalHistory->update($cambios);
 
         // El mapeo anterior se descarta solo cuando el nuevo quedó almacenado
         if ($rutaAnterior && $rutaAnterior !== $ruta) {

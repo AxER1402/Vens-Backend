@@ -22,7 +22,11 @@ return [
 
     'allowed_headers' => ['*'],
 
-    'exposed_headers' => [],
+    // Sin exponer Content-Disposition, el navegador no puede leer el nombre con
+    // el que el servidor bautiza un informe descargado: fetch/axios lo oculta y
+    // el archivo se guardaría con el nombre de la ruta en vez de
+    // "historia-clinica_maria-portillo_2026-08-28.pdf".
+    'exposed_headers' => ['Content-Disposition'],
 
     'max_age' => 0,
 
