@@ -33,13 +33,13 @@ class ResetPasswordNotification extends Notification
         $minutos = config('auth.passwords.'.config('auth.defaults.passwords').'.expire');
 
         return (new MailMessage)
-            ->subject('Restablecer contraseña — Centro Médico Vens')
+            ->subject('Restablecer contraseña — Clínica Doctora Yojana Mendoza')
             ->greeting('Hola '.$notifiable->name.',')
             ->line('Recibimos una solicitud para restablecer la contraseña de su cuenta.')
             ->action('Restablecer contraseña', $this->resetUrl($notifiable))
             ->line('Este enlace vencerá en '.$minutos.' minutos.')
             ->line('Si usted no solicitó el restablecimiento, puede ignorar este correo; su contraseña actual no se modificará.')
-            ->salutation('Atentamente, Centro Médico Vens');
+            ->salutation('Atentamente, Clínica Doctora Yojana Mendoza');
     }
 
     /**

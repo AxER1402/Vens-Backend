@@ -1,4 +1,4 @@
-# 🏥 Backend — Centro Médico Vens (Flebología)
+# 🏥 Backend — Clínica Doctora Yojana Mendoza (Flebología)
 
 Backend API REST desarrollado con **Laravel 13** y contenedorizado con **Docker**.
 Sistema de gestión para un centro médico especializado en Flebología.
@@ -478,7 +478,7 @@ MAIL_PORT=587
 MAIL_USERNAME=tucuenta@gmail.com
 MAIL_PASSWORD=abcdefghijklmnop          # la contraseña de aplicación, sin espacios
 MAIL_FROM_ADDRESS="tucuenta@gmail.com"  # debe coincidir con MAIL_USERNAME
-MAIL_FROM_NAME="Centro Médico Vens"
+MAIL_FROM_NAME="Clínica Doctora Yojana Mendoza"
 ```
 
 Y aplicar los cambios:
@@ -565,7 +565,7 @@ make migrate
 
 ## 👥 Equipo de Desarrollo
 
-**Centro Médico Vens — Flebología**
+**Clínica Doctora Yojana Mendoza — Flebología**
 Proyecto de Graduación 2
 
 ---
@@ -699,7 +699,7 @@ vens_phpmyadmin   phpMyAdmin                       Up  → :8080
 
 ## 👥 Equipo de Desarrollo
 
-**Centro Médico Vens — Flebología**
+**Clínica Doctora Yojana Mendoza — Flebología**
 Proyecto de Graduación 2
 
 ---

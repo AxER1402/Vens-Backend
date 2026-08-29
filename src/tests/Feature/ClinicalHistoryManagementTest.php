@@ -351,4 +351,205 @@ class ClinicalHistoryManagementTest extends TestCase
         $response->assertStatus(422);
         $this->assertNull(ClinicalHistory::find($historia)->mapeo_venoso_path);
     }
+
+    /*
+    |--------------------------------------------------------------------------
+    | Documento vectorial del mapeo venoso
+    |--------------------------------------------------------------------------
+    |
+    | El PNG es lo que se imprime; el documento vectorial es lo que permite
+    | reabrir el mapeo y seguir editándolo en la consulta siguiente. Perderlo no
+    | rompe nada visible hasta que el médico intenta continuar un mapeo y se
+    | encuentra el lienzo en blanco, así que conviene probarlo a conciencia.
+    |
+    */
+
+    /**
+     * Crear una historia en borrador y devolver su id.
+     */
+    private function historiaEnBorrador(): int
+    {
+        return $this->actingAs($this->medico(), 'sanctum')
+            ->postJson('/api/v1/clinical-histories', [
+                'patient_id' => $this->paciente()->id,
+                'estado_registro' => 'Borrador',
+            ])->json('data.id');
+    }
+
+    /**
+     * Documento vectorial mínimo pero completo, con un objeto de cada tipo.
+     *
+     * @param  array<int, array<string, mixed>>|null  $objetos
+     * @return array<string, mixed>
+     */
+    private function documento(?array $objetos = null): array
+    {
+        return [
+            'version' => 1,
+            'plantilla' => 'merit-mmii-6-vistas',
+            'objetos' => $objetos ?? [
+                ['tipo' => 'trazo', 'hallazgo' => 'safena_interna', 'puntos' => [[0.2, 0.3], [0.22, 0.45]]],
+                ['tipo' => 'marcador', 'hallazgo' => 'perforante', 'x' => 0.25, 'y' => 0.5, 'numero' => 1],
+                ['tipo' => 'anotacion', 'texto' => 'Reflujo al Valsalva', 'x' => 0.3, 'y' => 0.6, 'numero' => 1],
+                ['tipo' => 'texto', 'texto' => 'Control 6 semanas', 'x' => 0.7, 'y' => 0.2, 'tamano' => 16],
+            ],
+        ];
+    }
+
+    /**
+     * @param  array<int, array<string, mixed>>  $objetos
+     */
+    private function guardarMapeo(int $historia, ?array $objetos = null, bool $conDatos = true): \Illuminate\Testing\TestResponse
+    {
+        $carga = ['imagen' => 'data:image/png;base64,' . self::PNG_BASE64];
+
+        if ($conDatos) {
+            $carga['datos'] = $this->documento($objetos);
+        }
+
+        return $this->actingAs($this->medico(), 'sanctum')
+            ->postJson("/api/v1/clinical-histories/{$historia}/venous-map", $carga);
+    }
+
+    public function test_venous_map_stores_and_returns_the_vector_document(): void
+    {
+        Storage::fake('public');
+        $historia = $this->historiaEnBorrador();
+
+        $this->guardarMapeo($historia)->assertStatus(200);
+
+        $datos = ClinicalHistory::find($historia)->mapeo_venoso_datos;
+
+        $this->assertSame(1, $datos['version']);
+        $this->assertSame('merit-mmii-6-vistas', $datos['plantilla']);
+        $this->assertCount(4, $datos['objetos']);
+        $this->assertSame('safena_interna', $datos['objetos'][0]['hallazgo']);
+        $this->assertNotNull(ClinicalHistory::find($historia)->mapeo_venoso_updated_at);
+    }
+
+    /**
+     * Regresión: guardar solo la imagen no debe borrar el mapeo editable.
+     *
+     * Antes, `mapeo_venoso_datos` se asignaba siempre desde la petición, así que
+     * un cliente que enviara únicamente el PNG dejaba la columna en NULL y
+     * destruía el trabajo previo del médico sin ningún aviso.
+     */
+    public function test_saving_only_the_image_preserves_the_stored_vector_document(): void
+    {
+        Storage::fake('public');
+        $historia = $this->historiaEnBorrador();
+
+        $this->guardarMapeo($historia)->assertStatus(200);
+        $this->assertCount(4, ClinicalHistory::find($historia)->mapeo_venoso_datos['objetos']);
+
+        $this->guardarMapeo($historia, conDatos: false)->assertStatus(200);
+
+        $datos = ClinicalHistory::find($historia)->mapeo_venoso_datos;
+        $this->assertNotNull($datos, 'El documento vectorial se perdió al guardar solo la imagen.');
+        $this->assertCount(4, $datos['objetos']);
+    }
+
+    public function test_venous_map_rejects_coordinates_outside_the_canvas(): void
+    {
+        Storage::fake('public');
+        $historia = $this->historiaEnBorrador();
+
+        $this->guardarMapeo($historia, [
+            ['tipo' => 'marcador', 'hallazgo' => 'perforante', 'x' => 1.4, 'y' => 0.5],
+        ])->assertStatus(422)->assertJsonValidationErrors('datos.objetos.0.x');
+
+        $this->assertNull(ClinicalHistory::find($historia)->mapeo_venoso_datos);
+    }
+
+    public function test_venous_map_rejects_a_finding_outside_the_catalog(): void
+    {
+        Storage::fake('public');
+        $historia = $this->historiaEnBorrador();
+
+        $this->guardarMapeo($historia, [
+            ['tipo' => 'marcador', 'hallazgo' => 'hallazgo_inventado', 'x' => 0.2, 'y' => 0.5],
+        ])->assertStatus(422)->assertJsonValidationErrors('datos.objetos.0.hallazgo');
+    }
+
+    /**
+     * Un marcador no puede llevar un hallazgo pensado para trazos: el catálogo
+     * distingue los dos tipos y el reporte los lee por separado.
+     */
+    public function test_venous_map_rejects_a_finding_of_the_wrong_kind(): void
+    {
+        Storage::fake('public');
+        $historia = $this->historiaEnBorrador();
+
+        $this->guardarMapeo($historia, [
+            ['tipo' => 'marcador', 'hallazgo' => 'safena_interna', 'x' => 0.2, 'y' => 0.5],
+        ])->assertStatus(422)->assertJsonValidationErrors('datos.objetos.0.hallazgo');
+    }
+
+    public function test_venous_map_rejects_a_stroke_with_a_single_point(): void
+    {
+        Storage::fake('public');
+        $historia = $this->historiaEnBorrador();
+
+        $this->guardarMapeo($historia, [
+            ['tipo' => 'trazo', 'hallazgo' => 'varice', 'puntos' => [[0.2, 0.3]]],
+        ])->assertStatus(422)->assertJsonValidationErrors('datos.objetos.0.puntos');
+    }
+
+    public function test_venous_map_rejects_an_empty_annotation(): void
+    {
+        Storage::fake('public');
+        $historia = $this->historiaEnBorrador();
+
+        $this->guardarMapeo($historia, [
+            ['tipo' => 'anotacion', 'texto' => '   ', 'x' => 0.2, 'y' => 0.5],
+        ])->assertStatus(422)->assertJsonValidationErrors('datos.objetos.0.texto');
+    }
+
+    /**
+     * El tope de puntos es el que realmente acota el tamaño de la columna JSON:
+     * limitar solo el número de objetos no serviría de nada porque un único
+     * trazo puede traer cientos de miles de puntos.
+     */
+    public function test_venous_map_rejects_a_document_over_the_total_point_budget(): void
+    {
+        Storage::fake('public');
+        $historia = $this->historiaEnBorrador();
+
+        $puntos = array_fill(0, 4000, [0.5, 0.5]);
+        $trazo = fn () => ['tipo' => 'trazo', 'hallazgo' => 'varice', 'puntos' => $puntos];
+
+        $this->guardarMapeo($historia, array_fill(0, 6, $trazo()))
+            ->assertStatus(422)
+            ->assertJsonValidationErrors('datos.objetos');
+    }
+
+    public function test_venous_map_rejects_an_unknown_template(): void
+    {
+        Storage::fake('public');
+        $historia = $this->historiaEnBorrador();
+
+        $response = $this->actingAs($this->medico(), 'sanctum')
+            ->postJson("/api/v1/clinical-histories/{$historia}/venous-map", [
+                'imagen' => 'data:image/png;base64,' . self::PNG_BASE64,
+                'datos' => ['version' => 1, 'plantilla' => 'otra-plantilla', 'objetos' => []],
+            ]);
+
+        $response->assertStatus(422)->assertJsonValidationErrors('datos.plantilla');
+    }
+
+    public function test_venous_map_catalog_is_available_to_authenticated_staff(): void
+    {
+        $response = $this->actingAs($this->medico(), 'sanctum')
+            ->getJson('/api/v1/venous-map/catalog');
+
+        $response->assertStatus(200)
+            ->assertJsonPath('data.plantilla.id', 'merit-mmii-6-vistas')
+            ->assertJsonCount(6, 'data.zonas')
+            ->assertJsonCount(10, 'data.hallazgos');
+    }
+
+    public function test_venous_map_catalog_requires_authentication(): void
+    {
+        $this->getJson('/api/v1/venous-map/catalog')->assertStatus(401);
+    }
 }

@@ -7,12 +7,14 @@ use App\Http\Controllers\Api\ClinicalHistoryController;
 use App\Http\Controllers\Api\ClinicalOptionController;
 use App\Http\Controllers\Api\DopplerReportController;
 use App\Http\Controllers\Api\PatientController;
+use App\Http\Controllers\Api\ReporteController;
 use App\Http\Controllers\Api\UserController;
+use App\Http\Controllers\Api\VenousMapCatalogController;
 use Illuminate\Support\Facades\Route;
 
 /*
 |--------------------------------------------------------------------------
-| API Routes — Centro Médico Vens (Flebología)
+| API Routes — Clínica Doctora Yojana Mendoza (Flebología)
 |--------------------------------------------------------------------------
 */
 
@@ -78,10 +80,18 @@ Route::prefix('v1')->group(function () {
         // Catálogo de opciones clínicas (síntomas, CEAP, indicaciones, etc.)
         Route::get('/clinical-history-options', [ClinicalOptionController::class, 'index']);
 
+        // Catálogo del mapeo venoso (hallazgos, zonas anatómicas y plantilla)
+        Route::get('/venous-map/catalog', [VenousMapCatalogController::class, 'index']);
+
         // Lectura de Historias Clínicas (disponible para personal autorizado)
         Route::get('/clinical-histories', [ClinicalHistoryController::class, 'index']);
         Route::get('/clinical-histories/{clinicalHistory}', [ClinicalHistoryController::class, 'show']);
         Route::get('/patients/{patient}/clinical-histories', [ClinicalHistoryController::class, 'byPatient']);
+
+        // Descarga del informe de una consulta (?formato=pdf|docx&partes=historia,mapeo,doppler).
+        // Sin restricción de rol: quien puede leer el expediente puede imprimirlo.
+        Route::get('/clinical-histories/{clinicalHistory}/reporte', [ReporteController::class, 'historiaClinica']);
+        Route::get('/clinical-histories/{clinicalHistory}/mapeo-venoso/reporte', [ReporteController::class, 'mapeoVenoso']);
 
         // Registro y edición de Historias Clínicas (Restringido a Administrador o Médico)
         Route::middleware('role:administrador,medico')->group(function () {
@@ -97,6 +107,9 @@ Route::prefix('v1')->group(function () {
         Route::get('/doppler-reports/{dopplerReport}', [DopplerReportController::class, 'show']);
         Route::get('/patients/{patient}/doppler-reports', [DopplerReportController::class, 'byPatient']);
         Route::get('/clinical-histories/{clinicalHistory}/doppler-reports', [DopplerReportController::class, 'byClinicalHistory']);
+
+        // Descarga del reporte de Ecodöppler (?formato=pdf|docx)
+        Route::get('/doppler-reports/{dopplerReport}/reporte', [ReporteController::class, 'doppler']);
 
         // Registro y edición de Reportes de Ecodöppler (Restringido a Administrador o Médico)
         Route::middleware('role:administrador,medico')->group(function () {

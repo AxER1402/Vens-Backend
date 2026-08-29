@@ -2,21 +2,19 @@
 
 namespace App\Http\Requests\ClinicalHistory;
 
+use App\Support\MapeoVenoso\Catalogo;
+use Illuminate\Contracts\Validation\Validator;
 use Illuminate\Foundation\Http\FormRequest;
+use Illuminate\Validation\Rule;
 
 class StoreVenousMapRequest extends FormRequest
 {
     /**
-     * Tamaño máximo permitido del PNG decodificado (5 MB).
+     * Tipos de objeto que admite el documento vectorial.
+     *
+     * @var array<int, string>
      */
-    public const MAX_BYTES = 5 * 1024 * 1024;
-
-    /**
-     * Tope de elementos del documento vectorial. Un mapeo real no pasa de unas
-     * decenas de trazos y marcas; el límite está para que una petición
-     * manipulada no llene la columna JSON.
-     */
-    public const MAX_OBJETOS = 500;
+    public const TIPOS = ['trazo', 'marcador', 'anotacion', 'texto'];
 
     /**
      * Determine if the user is authorized to make this request.
@@ -27,7 +25,10 @@ class StoreVenousMapRequest extends FormRequest
     }
 
     /**
-     * Get the validation rules that apply to the request.
+     * Reglas planas del documento.
+     *
+     * La forma de cada objeto depende de su `tipo`, y eso los comodines de
+     * Laravel no lo expresan: la geometría se valida en withValidator().
      *
      * @return array<string, \Illuminate\Contracts\Validation\ValidationRule|array<mixed>|string>
      */
@@ -41,12 +42,233 @@ class StoreVenousMapRequest extends FormRequest
             // editándolo. Es opcional: sin él se archiva solo la imagen, como
             // hacía la versión anterior del módulo.
             'datos' => ['nullable', 'array'],
-            'datos.version' => ['required_with:datos', 'integer', 'min:1'],
-            'datos.plantilla' => ['nullable', 'string', 'max:100'],
-            'datos.objetos' => ['required_with:datos', 'array', 'max:'.self::MAX_OBJETOS],
-            'datos.objetos.*.tipo' => ['required', 'string', 'in:trazo,marcador,anotacion,texto'],
+            'datos.version' => ['required_with:datos', 'integer', Rule::in(Catalogo::versiones())],
+            'datos.plantilla' => ['nullable', 'string', Rule::in([Catalogo::plantillaId()])],
+            'datos.objetos' => ['required_with:datos', 'array', 'max:'.Catalogo::limite('max_objetos')],
+            'datos.objetos.*' => ['array'],
+            'datos.objetos.*.tipo' => ['required', 'string', Rule::in(self::TIPOS)],
         ];
     }
+
+    /**
+     * Validar la geometría y los hallazgos objeto por objeto.
+     *
+     * Sin esto el documento entra como JSON libre: se archivaría un mapeo con
+     * coordenadas fuera del lienzo o con un hallazgo que el catálogo no conoce,
+     * y el problema no aparecería hasta que alguien intentara reabrirlo o
+     * imprimirlo, cuando ya no hay forma de recuperar lo que el médico dibujó.
+     */
+    public function withValidator(Validator $validator): void
+    {
+        $validator->after(function (Validator $validator) {
+            $objetos = $this->input('datos.objetos');
+
+            if (! is_array($objetos)) {
+                return;
+            }
+
+            $puntosTotales = 0;
+
+            foreach ($objetos as $indice => $objeto) {
+                if (! is_array($objeto)) {
+                    continue;   // ya lo reporta la regla datos.objetos.*
+                }
+
+                $tipo = $objeto['tipo'] ?? null;
+
+                if (! in_array($tipo, self::TIPOS, true)) {
+                    continue;   // ya lo reporta la regla datos.objetos.*.tipo
+                }
+
+                $campo = "datos.objetos.{$indice}";
+
+                $this->validarZona($validator, $campo, $objeto);
+                $this->validarColor($validator, $campo, $objeto);
+
+                match ($tipo) {
+                    'trazo' => $puntosTotales += $this->validarTrazo($validator, $campo, $objeto),
+                    'marcador' => $this->validarMarcador($validator, $campo, $objeto),
+                    'anotacion', 'texto' => $this->validarTextual($validator, $campo, $objeto, $tipo),
+                };
+            }
+
+            // El tope real del tamaño de la columna JSON. Limitar solo el número
+            // de objetos no acota nada: un único trazo puede traer cientos de
+            // miles de puntos.
+            $maxPuntos = Catalogo::limite('max_puntos_total');
+
+            if ($puntosTotales > $maxPuntos) {
+                $validator->errors()->add(
+                    'datos.objetos',
+                    "El mapeo venoso supera el máximo de {$maxPuntos} puntos de trazo en total."
+                );
+            }
+        });
+    }
+
+    /*
+    |--------------------------------------------------------------------------
+    | Validación por tipo de objeto
+    |--------------------------------------------------------------------------
+    */
+
+    /**
+     * Trazo: recorrido venoso. Devuelve cuántos puntos aportó al total.
+     *
+     * @param  array<string, mixed>  $objeto
+     */
+    private function validarTrazo(Validator $validator, string $campo, array $objeto): int
+    {
+        $this->validarHallazgo($validator, $campo, $objeto, 'trazo');
+
+        $puntos = $objeto['puntos'] ?? null;
+
+        if (! is_array($puntos) || count($puntos) < 2) {
+            $validator->errors()->add("{$campo}.puntos", 'Un trazo del mapeo venoso debe tener al menos dos puntos.');
+
+            return 0;
+        }
+
+        $maxPuntosTrazo = Catalogo::limite('max_puntos_trazo');
+
+        if (count($puntos) > $maxPuntosTrazo) {
+            $validator->errors()->add("{$campo}.puntos", "Un trazo del mapeo venoso no puede superar los {$maxPuntosTrazo} puntos.");
+
+            return count($puntos);
+        }
+
+        foreach ($puntos as $i => $punto) {
+            if (! is_array($punto) || count($punto) !== 2
+                || ! $this->esCoordenada($punto[0] ?? null)
+                || ! $this->esCoordenada($punto[1] ?? null)) {
+                $validator->errors()->add("{$campo}.puntos.{$i}", 'Un punto del trazo está fuera del lienzo del mapeo venoso.');
+                break;   // basta con señalar el trazo una vez
+            }
+        }
+
+        if (array_key_exists('grosor', $objeto) && $objeto['grosor'] !== null
+            && ! in_array($objeto['grosor'], Catalogo::grosores(), false)) {
+            $validator->errors()->add("{$campo}.grosor", 'El grosor de trazo no es uno de los admitidos.');
+        }
+
+        return count($puntos);
+    }
+
+    /**
+     * Marcador: hallazgo puntual numerado.
+     *
+     * @param  array<string, mixed>  $objeto
+     */
+    private function validarMarcador(Validator $validator, string $campo, array $objeto): void
+    {
+        $this->validarHallazgo($validator, $campo, $objeto, 'marcador');
+        $this->validarAncla($validator, $campo, $objeto);
+    }
+
+    /**
+     * Anotación anclada o etiqueta de texto libre.
+     *
+     * @param  array<string, mixed>  $objeto
+     */
+    private function validarTextual(Validator $validator, string $campo, array $objeto, string $tipo): void
+    {
+        $this->validarAncla($validator, $campo, $objeto);
+
+        $texto = $objeto['texto'] ?? null;
+        $maxLongitud = Catalogo::limite('max_longitud_texto');
+
+        if (! is_string($texto) || trim($texto) === '') {
+            $validator->errors()->add("{$campo}.texto", 'Una anotación del mapeo venoso no puede quedar vacía.');
+        } elseif (mb_strlen($texto) > $maxLongitud) {
+            $validator->errors()->add("{$campo}.texto", "Una anotación del mapeo venoso no puede superar los {$maxLongitud} caracteres.");
+        }
+
+        if ($tipo === 'texto' && array_key_exists('tamano', $objeto) && $objeto['tamano'] !== null
+            && (! is_numeric($objeto['tamano']) || $objeto['tamano'] <= 0 || $objeto['tamano'] > 200)) {
+            $validator->errors()->add("{$campo}.tamano", 'El tamaño del texto del mapeo venoso no es válido.');
+        }
+    }
+
+    /*
+    |--------------------------------------------------------------------------
+    | Piezas compartidas
+    |--------------------------------------------------------------------------
+    */
+
+    /**
+     * Punto de anclaje de todo objeto que no sea un trazo.
+     *
+     * @param  array<string, mixed>  $objeto
+     */
+    private function validarAncla(Validator $validator, string $campo, array $objeto): void
+    {
+        foreach (['x', 'y'] as $eje) {
+            if (! $this->esCoordenada($objeto[$eje] ?? null)) {
+                $validator->errors()->add("{$campo}.{$eje}", 'Un objeto del mapeo venoso está fuera del lienzo.');
+            }
+        }
+    }
+
+    /**
+     * El hallazgo debe existir en el catálogo y corresponder al tipo de objeto:
+     * un marcador no puede llevar un hallazgo de trazo.
+     *
+     * @param  array<string, mixed>  $objeto
+     */
+    private function validarHallazgo(Validator $validator, string $campo, array $objeto, string $tipo): void
+    {
+        $hallazgo = $objeto['hallazgo'] ?? null;
+
+        if (! is_string($hallazgo) || ! in_array($hallazgo, Catalogo::idsHallazgo($tipo), true)) {
+            $validator->errors()->add("{$campo}.hallazgo", 'El mapeo venoso contiene un hallazgo que no está en el catálogo.');
+        }
+    }
+
+    /**
+     * La zona la calcula el editor a partir de la posición; aquí solo se
+     * comprueba que sea una de las vistas de la plantilla. Un objeto puede no
+     * tener zona: cayó en la franja que separa los dos paneles.
+     *
+     * @param  array<string, mixed>  $objeto
+     */
+    private function validarZona(Validator $validator, string $campo, array $objeto): void
+    {
+        $zona = $objeto['zona'] ?? null;
+
+        if ($zona !== null && ! in_array($zona, Catalogo::idsZona(), true)) {
+            $validator->errors()->add("{$campo}.zona", 'El mapeo venoso hace referencia a una zona anatómica desconocida.');
+        }
+    }
+
+    /**
+     * Color libre, para lo que no encaja en la leyenda clínica.
+     *
+     * @param  array<string, mixed>  $objeto
+     */
+    private function validarColor(Validator $validator, string $campo, array $objeto): void
+    {
+        $color = $objeto['color'] ?? null;
+
+        if ($color !== null && (! is_string($color) || ! preg_match('/^#[0-9A-Fa-f]{6}$/', $color))) {
+            $validator->errors()->add("{$campo}.color", 'El color de un objeto del mapeo venoso no es válido.');
+        }
+    }
+
+    /**
+     * Las coordenadas se archivan normalizadas 0-1 respecto a la plantilla, no
+     * en píxeles: así cambiar la plantilla por una versión de mayor resolución
+     * no invalida los mapeos ya archivados.
+     */
+    private function esCoordenada(mixed $valor): bool
+    {
+        return is_numeric($valor) && $valor >= 0 && $valor <= 1;
+    }
+
+    /*
+    |--------------------------------------------------------------------------
+    | Imagen
+    |--------------------------------------------------------------------------
+    */
 
     /**
      * Devolver el contenido binario del PNG recibido.
@@ -70,6 +292,8 @@ class StoreVenousMapRequest extends FormRequest
         return [
             'imagen.required' => 'No se recibió el mapeo venoso a guardar.',
             'imagen.regex' => 'El mapeo venoso debe enviarse como una imagen PNG válida.',
+            'datos.version.in' => 'El mapeo venoso viene en un formato que este sistema no sabe leer.',
+            'datos.plantilla.in' => 'El mapeo venoso fue dibujado sobre una plantilla desconocida.',
             'datos.objetos.max' => 'El mapeo venoso supera el máximo de :max elementos.',
             'datos.objetos.*.tipo.in' => 'El mapeo venoso contiene un elemento de tipo desconocido.',
         ];
