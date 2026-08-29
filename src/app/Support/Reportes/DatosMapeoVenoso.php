@@ -10,14 +10,18 @@ use Illuminate\Support\Facades\Storage;
  * Contenido del reporte del mapeo venoso.
  *
  * La lámina sola es una imagen: dice dónde están los hallazgos pero no qué son.
- * Lo que convierte este documento en un reporte es la tabla que acompaña al
- * dibujo, donde cada marca numerada se lee como texto —"3 · Perforante
- * insuficiente · MII · Cara antero-interna"— y se puede correlacionar con el
- * Ecodöppler. Esa tabla sale del documento vectorial, no del PNG.
+ * Lo que convierte este documento en un reporte son las tablas que acompañan al
+ * dibujo, donde cada trazo y cada marca numerada se leen como texto —"3 ·
+ * Perforante · reflujo patológico · MII · Cara antero-interna"— y se pueden
+ * correlacionar con el Ecodöppler. Salen del documento vectorial, no del PNG.
  *
- * Por eso el reporte solo existe en PDF: es una lámina a escala con su leyenda,
- * y en Word la imagen se convierte en un objeto flotante que se desplaza al
- * primer retoque y arruina la proporción con la que se imprime.
+ * No llevan leyenda del catálogo: cada fila ya dice con todas sus letras qué es
+ * y cómo se lee, así que una tabla de equivalencias delante solo repetiría lo
+ * que viene detrás.
+ *
+ * Por eso el reporte solo existe en PDF: es una lámina a escala, y en Word la
+ * imagen se convierte en un objeto flotante que se desplaza al primer retoque y
+ * arruina la proporción con la que se imprime.
  */
 class DatosMapeoVenoso
 {
@@ -42,7 +46,7 @@ class DatosMapeoVenoso
 
         $secciones = array_filter([
             $this->lamina(),
-            $this->leyenda(),
+            $this->tablaTrazos(),
             $this->tablaMarcadores(),
             $this->tablaAnotaciones(),
             $this->resumen(),
@@ -80,7 +84,7 @@ class DatosMapeoVenoso
         }
 
         $bloques = array_values(array_filter([
-            $this->leyenda(),
+            $this->tablaTrazos(),
             $this->tablaMarcadores(),
             $this->tablaAnotaciones(),
         ]));
@@ -124,46 +128,37 @@ class DatosMapeoVenoso
     }
 
     /**
-     * Leyenda de los hallazgos que aparecen en este mapeo, no el catálogo
-     * entero: una leyenda con diez entradas de las que solo tres se usan obliga
-     * a buscar y hace más difícil leer la lámina.
+     * Recorridos venosos trazados. Con el vocabulario nuevo un trazo ya no es
+     * solo una línea en la lámina: dice en qué plano corre y en qué estado está
+     * la vena, y eso se puede leer sin tener el dibujo delante.
      *
      * @return array<string, mixed>|null
      */
-    private function leyenda(): ?array
+    private function tablaTrazos(): ?array
     {
-        $usados = [];
-
-        foreach ($this->objetos() as $objeto) {
-            $id = $objeto['hallazgo'] ?? null;
-
-            if (is_string($id) && ! isset($usados[$id])) {
-                $usados[$id] = true;
-            }
-        }
-
-        if ($usados === []) {
-            return null;
-        }
-
         $filas = [];
 
-        foreach (Catalogo::hallazgos() as $hallazgo) {
-            if (isset($usados[$hallazgo['id']])) {
-                $filas[] = [
-                    $hallazgo['abrev'],
-                    $hallazgo['label'],
-                    $hallazgo['tipo'] === 'trazo' ? 'Trazo' : 'Marcador',
-                ];
-            }
+        foreach ($this->objetosOrdenados('trazo') as $objeto) {
+            $zona = $this->zonaDe($objeto);
+
+            $filas[] = [
+                $this->descripcion($objeto, 'trazo'),
+                $this->lectura($objeto),
+                Catalogo::abrevMiembro($zona['miembro'] ?? null),
+                $zona['cara'] ?? 'Sin zona',
+            ];
+        }
+
+        if ($filas === []) {
+            return null;
         }
 
         return [
             'tipo' => 'tabla',
-            'titulo' => 'Leyenda',
-            'encabezados' => ['Abrev.', 'Hallazgo', 'Tipo'],
+            'titulo' => 'Recorridos trazados',
+            'encabezados' => ['Trayecto', 'Lectura', 'Miembro', 'Cara'],
             'filas' => $filas,
-            'anchos' => [12, 63, 25],
+            'anchos' => [33, 32, 12, 23],
         ];
     }
 
@@ -179,7 +174,8 @@ class DatosMapeoVenoso
 
             $filas[] = [
                 Formato::valor($objeto['numero'] ?? null),
-                Catalogo::etiquetaHallazgo($objeto['hallazgo'] ?? null),
+                $this->descripcion($objeto, 'marcador'),
+                $this->lectura($objeto),
                 Catalogo::abrevMiembro($zona['miembro'] ?? null),
                 $zona['cara'] ?? 'Sin zona',
             ];
@@ -192,9 +188,9 @@ class DatosMapeoVenoso
         return [
             'tipo' => 'tabla',
             'titulo' => 'Hallazgos marcados',
-            'encabezados' => ['N.º', 'Hallazgo', 'Miembro', 'Cara'],
+            'encabezados' => ['N.º', 'Hallazgo', 'Lectura', 'Miembro', 'Cara'],
             'filas' => $filas,
-            'anchos' => [8, 47, 15, 30],
+            'anchos' => [7, 30, 30, 11, 22],
         ];
     }
 
@@ -279,6 +275,49 @@ class DatosMapeoVenoso
     | Lectura del documento vectorial
     |--------------------------------------------------------------------------
     */
+
+    /**
+     * Qué se dibujó: el tipo de trayecto de un trazo o el símbolo de un
+     * marcador, cayendo al vocabulario anterior si el objeto viene de un mapeo
+     * archivado antes de separar color, trayecto y marcador.
+     *
+     * @param  array<string, mixed>  $objeto
+     */
+    private function descripcion(array $objeto, string $tipo): string
+    {
+        $id = $objeto[$tipo === 'trazo' ? 'trayecto' : 'marcador'] ?? null;
+
+        if (is_string($id) && $id !== '') {
+            return $tipo === 'trazo'
+                ? Catalogo::etiquetaTrayecto($id)
+                : Catalogo::etiquetaMarcador($id);
+        }
+
+        return Catalogo::etiquetaHallazgo($objeto['hallazgo'] ?? null);
+    }
+
+    /**
+     * Lectura clínica que aporta el color: "Vena incompetente / reflujo
+     * patológico.". Es lo que hace que el informe siga diciendo lo mismo que la
+     * lámina cuando se imprime en blanco y negro.
+     *
+     * Un marcador sin color explícito se lee con el que trae por defecto en el
+     * catálogo, que es el que el editor le pintó. Un color hexadecimal suelto
+     * —vocabulario anterior— no significa nada y se deja en blanco antes que
+     * inventarle un significado.
+     *
+     * @param  array<string, mixed>  $objeto
+     */
+    private function lectura(array $objeto): string
+    {
+        $color = $objeto['color'] ?? null;
+
+        if (! is_string($color) || $color === '') {
+            $color = Catalogo::marcador($objeto['marcador'] ?? null)['color_por_defecto'] ?? null;
+        }
+
+        return Catalogo::color($color) === null ? '—' : Catalogo::significadoColor($color);
+    }
 
     /**
      * Objetos archivados, tolerando un documento ausente o malformado: un mapeo

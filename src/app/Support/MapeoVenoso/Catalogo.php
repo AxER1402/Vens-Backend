@@ -17,6 +17,15 @@ namespace App\Support\MapeoVenoso;
 class Catalogo
 {
     /** @var array<string, array<string, mixed>>|null */
+    private static ?array $coloresPorId = null;
+
+    /** @var array<string, array<string, mixed>>|null */
+    private static ?array $trayectosPorId = null;
+
+    /** @var array<string, array<string, mixed>>|null */
+    private static ?array $marcadoresPorId = null;
+
+    /** @var array<string, array<string, mixed>>|null */
     private static ?array $hallazgosPorId = null;
 
     /** @var array<string, array<string, mixed>>|null */
@@ -57,8 +66,174 @@ class Catalogo
 
     /*
     |--------------------------------------------------------------------------
-    | Hallazgos
+    | Colores: significado clínico del vaso
     |--------------------------------------------------------------------------
+    */
+
+    /**
+     * @return array<int, array<string, mixed>>
+     */
+    public static function colores(): array
+    {
+        return config('mapeo-venoso.colores');
+    }
+
+    /**
+     * @return array<int, string>
+     */
+    public static function idsColor(): array
+    {
+        return array_column(self::colores(), 'id');
+    }
+
+    /**
+     * @return array<string, mixed>|null
+     */
+    public static function color(?string $id): ?array
+    {
+        if ($id === null) {
+            return null;
+        }
+
+        self::$coloresPorId ??= array_column(config('mapeo-venoso.colores'), null, 'id');
+
+        return self::$coloresPorId[$id] ?? null;
+    }
+
+    /**
+     * Nombre del color: "Rojo".
+     */
+    public static function etiquetaColor(?string $id): string
+    {
+        if ($id === null || $id === '') {
+            return '—';
+        }
+
+        return self::color($id)['label'] ?? $id;
+    }
+
+    /**
+     * Lo que el color significa: "Vena incompetente / reflujo patológico.".
+     *
+     * Es lo que se imprime en el informe. El nombre del color por sí solo no
+     * dice nada en una hoja fotocopiada en blanco y negro.
+     */
+    public static function significadoColor(?string $id): string
+    {
+        return self::color($id)['ayuda'] ?? '—';
+    }
+
+    /**
+     * Hexadecimal con el que se pinta, para el editor y la leyenda en pantalla.
+     */
+    public static function hexColor(?string $id): ?string
+    {
+        return self::color($id)['hex'] ?? null;
+    }
+
+    /*
+    |--------------------------------------------------------------------------
+    | Trayectos: patrón de línea de un recorrido venoso
+    |--------------------------------------------------------------------------
+    */
+
+    /**
+     * @return array<int, array<string, mixed>>
+     */
+    public static function trayectos(): array
+    {
+        return config('mapeo-venoso.trayectos');
+    }
+
+    /**
+     * @return array<int, string>
+     */
+    public static function idsTrayecto(): array
+    {
+        return array_column(self::trayectos(), 'id');
+    }
+
+    /**
+     * @return array<string, mixed>|null
+     */
+    public static function trayecto(?string $id): ?array
+    {
+        if ($id === null) {
+            return null;
+        }
+
+        self::$trayectosPorId ??= array_column(config('mapeo-venoso.trayectos'), null, 'id');
+
+        return self::$trayectosPorId[$id] ?? null;
+    }
+
+    /**
+     * Nombre legible de un trayecto. Un id fuera del catálogo se devuelve tal
+     * cual: en un informe clínico es preferible imprimir un código crudo a
+     * imprimir un hueco.
+     */
+    public static function etiquetaTrayecto(?string $id): string
+    {
+        if ($id === null || $id === '') {
+            return '—';
+        }
+
+        return self::trayecto($id)['label'] ?? $id;
+    }
+
+    /*
+    |--------------------------------------------------------------------------
+    | Marcadores: hallazgos puntuales
+    |--------------------------------------------------------------------------
+    */
+
+    /**
+     * @return array<int, array<string, mixed>>
+     */
+    public static function marcadores(): array
+    {
+        return config('mapeo-venoso.marcadores');
+    }
+
+    /**
+     * @return array<int, string>
+     */
+    public static function idsMarcador(): array
+    {
+        return array_column(self::marcadores(), 'id');
+    }
+
+    /**
+     * @return array<string, mixed>|null
+     */
+    public static function marcador(?string $id): ?array
+    {
+        if ($id === null) {
+            return null;
+        }
+
+        self::$marcadoresPorId ??= array_column(config('mapeo-venoso.marcadores'), null, 'id');
+
+        return self::$marcadoresPorId[$id] ?? null;
+    }
+
+    public static function etiquetaMarcador(?string $id): string
+    {
+        if ($id === null || $id === '') {
+            return '—';
+        }
+
+        return self::marcador($id)['label'] ?? $id;
+    }
+
+    /*
+    |--------------------------------------------------------------------------
+    | Hallazgos heredados
+    |--------------------------------------------------------------------------
+    |
+    | Vocabulario anterior a la separación en color + trayecto + marcador. El
+    | editor ya no lo ofrece; esto solo existe para releer mapeos archivados.
+    |
     */
 
     /**
@@ -66,7 +241,7 @@ class Catalogo
      */
     public static function hallazgos(?string $tipo = null): array
     {
-        $hallazgos = config('mapeo-venoso.hallazgos');
+        $hallazgos = config('mapeo-venoso.hallazgos_legacy');
 
         if ($tipo === null) {
             return $hallazgos;
@@ -76,8 +251,7 @@ class Catalogo
     }
 
     /**
-     * Hallazgo por id, o null si el objeto usa color libre o trae un id que ya
-     * no existe en el catálogo.
+     * Hallazgo heredado por id, o null si el objeto ya usa el vocabulario nuevo.
      *
      * @return array<string, mixed>|null
      */
@@ -87,7 +261,7 @@ class Catalogo
             return null;
         }
 
-        self::$hallazgosPorId ??= array_column(config('mapeo-venoso.hallazgos'), null, 'id');
+        self::$hallazgosPorId ??= array_column(config('mapeo-venoso.hallazgos_legacy'), null, 'id');
 
         return self::$hallazgosPorId[$id] ?? null;
     }
@@ -103,9 +277,8 @@ class Catalogo
     }
 
     /**
-     * Nombre legible de un hallazgo. Si el id no está en el catálogo se devuelve
-     * tal cual en lugar de perderlo: en un informe clínico es preferible
-     * imprimir un código crudo a imprimir un hueco.
+     * Nombre legible de un hallazgo heredado. Si el id no está en el catálogo se
+     * devuelve tal cual en lugar de perderlo.
      */
     public static function etiquetaHallazgo(?string $id): string
     {
@@ -239,6 +412,9 @@ class Catalogo
      */
     public static function olvidarIndices(): void
     {
+        self::$coloresPorId = null;
+        self::$trayectosPorId = null;
+        self::$marcadoresPorId = null;
         self::$hallazgosPorId = null;
         self::$zonasPorId = null;
     }
