@@ -8,9 +8,7 @@ use App\Models\DopplerReport;
 use App\Support\Reportes\DatosDoppler;
 use App\Support\Reportes\DatosInforme;
 use App\Support\Reportes\DatosMapeoVenoso;
-use App\Support\Reportes\Formato;
-use App\Support\Reportes\GeneradorPdf;
-use App\Support\Reportes\GeneradorWord;
+use App\Support\Reportes\Emision;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Symfony\Component\HttpFoundation\StreamedResponse;
@@ -28,11 +26,6 @@ use Symfony\Component\HttpFoundation\StreamedResponse;
  */
 class ReporteController extends Controller
 {
-    private const TIPOS = [
-        'pdf' => 'application/pdf',
-        'docx' => 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-    ];
-
     /**
      * Informe de una consulta, en PDF o Word.
      *
@@ -56,7 +49,6 @@ class ReporteController extends Controller
 
         return $this->descargar($doc, $formato);
     }
-
 
     /**
      * Mapeo venoso de una consulta. Solo PDF.
@@ -100,6 +92,11 @@ class ReporteController extends Controller
     |--------------------------------------------------------------------------
     | Emisión
     |--------------------------------------------------------------------------
+    |
+    | Renderizar y bautizar el archivo es idéntico para estos informes y para
+    | los reportes de período, así que vive en App\Support\Reportes\Emision y
+    | aquí solo se delega.
+    |
     */
 
     /**
@@ -107,28 +104,7 @@ class ReporteController extends Controller
      */
     private function descargar(array $doc, string $formato): StreamedResponse
     {
-        $contenido = $formato === 'docx'
-            ? (new GeneradorWord)->generar($doc)
-            : (new GeneradorPdf)->generar($doc);
-
-        $nombre = Formato::nombreArchivo(
-            $doc['archivo'],
-            $doc['nombre_archivo_base'] ?? null,
-            $doc['fecha_archivo'] ?? null,
-            $formato
-        );
-
-        // El documento se compone entero en memoria antes de responder: un
-        // informe de una consulta pesa unos cientos de KB y así un fallo del
-        // generador sale como error HTTP y no como una descarga truncada.
-        return response()->streamDownload(
-            fn () => print($contenido),
-            $nombre,
-            [
-                'Content-Type' => self::TIPOS[$formato],
-                'Content-Length' => (string) strlen($contenido),
-            ]
-        );
+        return Emision::descargar($doc, $formato);
     }
 
     /**
@@ -163,15 +139,6 @@ class ReporteController extends Controller
      */
     private function formato(Request $request): string|JsonResponse
     {
-        $formato = strtolower((string) $request->query('formato', 'pdf'));
-
-        if (! array_key_exists($formato, self::TIPOS)) {
-            return response()->json([
-                'success' => false,
-                'message' => "El formato '{$formato}' no está disponible. Use 'pdf' o 'docx'.",
-            ], 422);
-        }
-
-        return $formato;
+        return Emision::formato($request);
     }
 }
