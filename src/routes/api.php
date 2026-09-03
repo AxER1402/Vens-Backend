@@ -8,6 +8,7 @@ use App\Http\Controllers\Api\ClinicalOptionController;
 use App\Http\Controllers\Api\DopplerReportController;
 use App\Http\Controllers\Api\PatientController;
 use App\Http\Controllers\Api\ReporteController;
+use App\Http\Controllers\Api\ReportePeriodoController;
 use App\Http\Controllers\Api\UserController;
 use App\Http\Controllers\Api\VenousMapCatalogController;
 use Illuminate\Support\Facades\Route;
@@ -111,6 +112,15 @@ Route::prefix('v1')->group(function () {
         // Descarga del reporte de Ecodöppler (?formato=pdf|docx)
         Route::get('/doppler-reports/{dopplerReport}/reporte', [ReporteController::class, 'doppler']);
 
+        // Reportes de período: los que resumen la actividad de la clínica entre
+        // dos fechas, frente a los informes de un expediente concreto.
+        // El permiso lo comprueba el controlador contra lo que cada reporte
+        // declara: quien puede imprimir un expediente no tiene por qué ver la
+        // producción del personal ni la epidemiología de la consulta.
+        Route::get('/reportes', [ReportePeriodoController::class, 'index']);
+        Route::get('/reportes/{clave}', [ReportePeriodoController::class, 'emitir'])
+            ->where('clave', '[a-z0-9-]+');
+
         // Registro y edición de Reportes de Ecodöppler (Restringido a Administrador o Médico)
         Route::middleware('role:administrador,medico')->group(function () {
             Route::post('/doppler-reports', [DopplerReportController::class, 'store']);
@@ -120,4 +130,3 @@ Route::prefix('v1')->group(function () {
         });
     });
 });
-
