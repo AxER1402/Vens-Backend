@@ -40,7 +40,7 @@ class PacientesAtendidos extends ReportePeriodo
         }
 
         $porPaciente = $consultas->groupBy('patient_id');
-        $estudios = $this->estudiosPorPaciente();
+        $estudios = $this->estudiosPorPaciente($porPaciente->keys()->all());
 
         return array_values(array_filter([
             $this->resumen($consultas, $porPaciente, $estudios),
@@ -84,10 +84,8 @@ class PacientesAtendidos extends ReportePeriodo
                 'Consultas registradas' => (string) $consultas->count(),
                 'Pacientes nuevos' => $nuevos.' ('.$this->porcentaje($nuevos, $pacientes).')',
                 'Pacientes en seguimiento' => (string) ($pacientes - $nuevos),
-                'Consultas por paciente' => $pacientes > 0
-                    ? number_format($consultas->count() / $pacientes, 1, '.', '')
-                    : Formato::VACIO,
-                'Estudios de Ecodöppler' => (string) array_sum($estudios),
+                'Consultas por paciente' => $this->media($consultas->count(), $pacientes),
+                'Estudios de estos pacientes' => (string) array_sum($estudios),
                 'Consultas finalizadas' => (string) $consultas->where('estado_registro', 'Finalizada')->count(),
                 'Consultas en borrador' => (string) $consultas->where('estado_registro', 'Borrador')->count(),
             ],
@@ -169,19 +167,26 @@ class PacientesAtendidos extends ReportePeriodo
     /**
      * Estudios de Ecodöppler del período, contados por paciente.
      *
+     * Se limita a los pacientes que aparecen en el reporte. El período puede
+     * tener estudios de alguien que no vino a consulta —el estudio se levanta
+     * antes de abrir el expediente—, y contarlos en el resumen dejaba un total
+     * que no cuadraba con la suma de la columna: quien lee el documento
+     * concluye que la tabla está mal, no que mide otra cosa.
+     *
+     * @param  array<int, int>  $pacientes
      * @return array<int, int>
      */
-    private function estudiosPorPaciente(): array
+    private function estudiosPorPaciente(array $pacientes): array
     {
-        $consulta = DopplerReport::query()
-            ->where('activo', true)
-            ->whereBetween('fecha_estudio', [$this->periodo->fechaInicio(), $this->periodo->fechaFin()]);
-
-        if (! empty($this->filtros['patient_id'])) {
-            $consulta->where('patient_id', $this->filtros['patient_id']);
+        if ($pacientes === []) {
+            return [];
         }
 
-        return $consulta->get(['patient_id'])
+        return DopplerReport::query()
+            ->where('activo', true)
+            ->whereIn('patient_id', $pacientes)
+            ->whereBetween('fecha_estudio', [$this->periodo->fechaInicio(), $this->periodo->fechaFin()])
+            ->get(['patient_id'])
             ->countBy('patient_id')
             ->all();
     }
