@@ -62,10 +62,12 @@ class ProductividadMedico extends ReportePeriodo
 
     protected function metaExtra(): array
     {
+        // La ficha se pinta de cuatro en cuatro: con «Período» y «Días» delante,
+        // dos entradas más la dejan en una fila. Los estudios ya salen en el
+        // resumen y en la tabla, así que no hacen falta también aquí.
         return [
             'Citas' => (string) $this->citas()->count(),
             'Consultas' => (string) $this->consultas()->count(),
-            'Estudios' => (string) $this->estudios()->count(),
         ];
     }
 
@@ -82,7 +84,7 @@ class ProductividadMedico extends ReportePeriodo
     {
         $citas = $this->citas();
         $atendidas = $citas->where('estado', 'Completada')->count();
-        $dias = max(1, $this->periodo->dias());
+        $dias = $this->periodo->dias();
 
         return [
             'tipo' => 'campos',
@@ -94,8 +96,8 @@ class ProductividadMedico extends ReportePeriodo
                 'Consultas registradas' => (string) $this->consultas()->count(),
                 'Estudios de Ecodöppler' => (string) $this->estudios()->count(),
                 'Consultas en borrador' => (string) $this->consultas()->where('estado_registro', 'Borrador')->count(),
-                'Consultas por día' => number_format($this->consultas()->count() / $dias, 1, '.', ''),
-                'Citas atendidas por día' => number_format($atendidas / $dias, 1, '.', ''),
+                'Consultas por día' => $this->media($this->consultas()->count(), $dias),
+                'Citas atendidas por día' => $this->media($atendidas, $dias),
             ],
         ];
     }

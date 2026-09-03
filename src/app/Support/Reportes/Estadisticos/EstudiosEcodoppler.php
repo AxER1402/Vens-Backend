@@ -94,7 +94,7 @@ class EstudiosEcodoppler extends ReportePeriodo
             'campos' => [
                 'Estudios realizados' => (string) $total,
                 'Pacientes estudiados' => (string) $estudios->pluck('patient_id')->unique()->count(),
-                'Estudios por paciente' => number_format($total / max(1, $estudios->pluck('patient_id')->unique()->count()), 1, '.', ''),
+                'Estudios por paciente' => $this->media($total, $estudios->pluck('patient_id')->unique()->count()),
                 'Adjuntos a una consulta' => $this->conteoYPorcentaje($estudios->whereNotNull('clinical_history_id')->count(), $total),
                 'Con conclusión redactada' => $this->conteoYPorcentaje(
                     $estudios->filter(fn (DopplerReport $e) => Formato::hayDato($e->conclusion))->count(),
@@ -204,9 +204,8 @@ class EstudiosEcodoppler extends ReportePeriodo
                     Formato::fecha($estudio->fecha_estudio),
                     Formato::valor($estudio->patient?->nombre),
                     $conReflujo === [] ? 'No' : $this->resumir(implode(', ', $conReflujo), 44),
-                    $this->resumir($estudio->der_trombosis, 26),
-                    $this->resumir($estudio->izq_trombosis, 26),
-                    $this->resumir($estudio->conclusion, 60),
+                    $this->trombosis($estudio),
+                    $this->resumir($estudio->conclusion, 70),
                 ];
             })
             ->values()
@@ -217,10 +216,41 @@ class EstudiosEcodoppler extends ReportePeriodo
         return [
             'tipo' => 'tabla',
             'titulo' => 'Detalle de estudios',
-            'encabezados' => ['Fecha', 'Paciente', 'Segmentos con reflujo', 'Trombosis MID', 'Trombosis MII', 'Conclusión'],
+            'encabezados' => ['Fecha', 'Paciente', 'Segmentos con reflujo', 'Trombosis', 'Conclusión'],
             'filas' => $filas,
-            'anchos' => [10, 18, 22, 14, 14, 22],
+            // La fecha necesita su 12 %: por debajo, «29/08/2026» parte en dos
+            // líneas y la tabla entera se lee mal.
+            'anchos' => [12, 19, 23, 21, 25],
         ];
+    }
+
+    /**
+     * Los dos miembros en una sola celda.
+     *
+     * Casi siempre dicen lo mismo —«no se observan signos de trombosis»— y dos
+     * columnas de texto libre las dejaba tan estrechas que solo cabía el
+     * principio de la frase, que es justo la parte que no informa. Cuando
+     * difieren sí se separan, porque entonces la diferencia es el dato.
+     */
+    private function trombosis(DopplerReport $estudio): string
+    {
+        $der = trim((string) $estudio->der_trombosis);
+        $izq = trim((string) $estudio->izq_trombosis);
+
+        if ($der === '' && $izq === '') {
+            return Formato::VACIO;
+        }
+
+        if ($der === $izq) {
+            return $this->resumir($der, 60);
+        }
+
+        $partes = array_filter([
+            $der !== '' ? "MID: {$der}" : null,
+            $izq !== '' ? "MII: {$izq}" : null,
+        ]);
+
+        return $this->resumir(implode(' · ', $partes), 70);
     }
 
     /*

@@ -100,7 +100,7 @@ class CitasPorPeriodo extends ReportePeriodo
                 'Sin cerrar' => $pendientes.' ('.$this->porcentaje($pendientes, $total).')',
                 'Canceladas' => $canceladas.' ('.$this->porcentaje($canceladas, $total).')',
                 'Inasistencias' => $ausencias.' ('.$this->porcentaje($ausencias, $total).')',
-                'Promedio diario' => number_format($total / max(1, $this->periodo->dias()), 1, '.', ''),
+                'Promedio diario' => $this->media($total, $this->periodo->dias()),
                 'Días con agenda' => (string) $citas
                     ->map(fn (Appointment $cita) => $cita->fecha_hora_inicio?->toDateString())
                     ->filter()

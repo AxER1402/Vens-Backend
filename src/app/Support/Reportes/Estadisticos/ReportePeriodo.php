@@ -182,6 +182,24 @@ abstract class ReportePeriodo
     }
 
     /**
+     * Promedio con la precisión que haga falta para que no se lea como cero.
+     *
+     * «16 citas en 365 días» da 0.04, y con un decimal se imprime «0.0», que en
+     * un resumen se lee como «no hubo actividad» justo debajo de la línea que
+     * dice que hubo dieciséis. Por debajo de la unidad se pasa a dos decimales.
+     */
+    protected function media(int|float $parte, int|float $total): string
+    {
+        if ($total <= 0) {
+            return Formato::VACIO;
+        }
+
+        $valor = $parte / $total;
+
+        return number_format($valor, $valor > 0 && $valor < 1 ? 2 : 1, '.', '');
+    }
+
+    /**
      * Recortar un listado al tope imprimible.
      *
      * @param  array<int, array<int, string>>  $filas
