@@ -80,7 +80,11 @@ Route::prefix('v1')->group(function () {
         // igual que los informes clínicos: quien lo ve puede entregarlo.
         Route::get('/invoices/{invoice}/reporte', [InvoiceController::class, 'reporte']);
 
-        Route::middleware('role:administrador,recepcionista')->group(function () {
+        // También el médico: la consulta se pasa a cobro desde la propia
+        // historia clínica, y quien la acaba de cerrar es quien está delante
+        // del paciente. En una clínica de un solo consultorio, obligar a que
+        // otro usuario emita el recibo es fricción, no control.
+        Route::middleware('role:administrador,medico,recepcionista')->group(function () {
             Route::post('/invoices', [InvoiceController::class, 'store']);
             Route::patch('/invoices/{invoice}/anular', [InvoiceController::class, 'anular']);
         });
