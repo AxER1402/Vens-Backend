@@ -25,6 +25,17 @@ final class CatalogoReportes
      * @var array<string, array{clase: class-string<ReportePeriodo>, titulo: string, descripcion: string, roles: array<int, string>, filtros: array<int, string>}>
      */
     private const REPORTES = [
+        'ingresos' => [
+            'clase' => IngresosPorPeriodo::class,
+            'titulo' => 'Ingresos del período',
+            'descripcion' => 'Lo cobrado entre dos fechas: por día, por método de pago y por concepto, sin los documentos anulados.',
+            // También el médico: en esta clínica quien atiende es quien la
+            // dirige, y la lectura de los documentos ya está abierta a los tres
+            // roles. Restringir el reporte y no la lista sería una puerta con
+            // la ventana abierta al lado.
+            'roles' => ['administrador', 'medico', 'recepcionista'],
+            'filtros' => ['patient_id'],
+        ],
         'pacientes-atendidos' => [
             'clase' => PacientesAtendidos::class,
             'titulo' => 'Pacientes atendidos',

@@ -6,6 +6,8 @@ use App\Models\ClinicalHistory;
 use App\Models\Invoice;
 use App\Models\Patient;
 use App\Models\User;
+use App\Support\Reportes\Estadisticos\IngresosPorPeriodo;
+use App\Support\Reportes\Estadisticos\Periodo;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
@@ -310,6 +312,48 @@ class FacturacionTest extends TestCase
         $this->actingAs(User::where('rol', 'medico')->first(), 'sanctum')
             ->get("/api/v1/invoices/{$documento['id']}/reporte?formato=pdf")
             ->assertStatus(200);
+    }
+
+    public function test_el_reporte_de_ingresos_suma_lo_cobrado_y_deja_fuera_lo_anulado(): void
+    {
+        $recepcion = $this->recepcionista();
+
+        // Dos cobros de 1100 cada uno; uno se anula.
+        $primero = $this->actingAs($recepcion, 'sanctum')
+            ->postJson('/api/v1/invoices', $this->cobro())->json('data');
+        $this->actingAs($recepcion, 'sanctum')
+            ->postJson('/api/v1/invoices', $this->cobro())->json('data');
+
+        $this->actingAs($recepcion, 'sanctum')
+            ->patchJson("/api/v1/invoices/{$primero['id']}/anular", ['motivo_anulacion' => 'Cobro duplicado'])
+            ->assertStatus(200);
+
+        $reporte = new IngresosPorPeriodo(
+            Periodo::entre(now()->startOfMonth()->toDateString(), now()->endOfMonth()->toDateString())
+        );
+        $documento = $reporte->construir();
+
+        $meta = $documento['meta'];
+        $this->assertSame('1', $meta['Documentos'], 'El anulado no cuenta como documento del período.');
+        $this->assertSame('Q 1,100.00', $meta['Total cobrado']);
+
+        $resumen = collect($documento['secciones'])->firstWhere('titulo', 'Resumen');
+        $this->assertSame('Q 1,100.00', $resumen['campos']['Total cobrado']);
+        $this->assertSame('Q 117.86', $resumen['campos']['IVA incluido']);
+        $this->assertSame('Q 982.14', $resumen['campos']['Base imponible']);
+
+        // El anulado no suma, pero se menciona: ocupa un número del correlativo
+        $nota = collect($documento['secciones'])->firstWhere('titulo', 'Documentos anulados');
+        $this->assertNotNull($nota, 'El reporte tiene que decir qué se anuló en el período.');
+        $this->assertStringContainsString('Q 1,100.00', $nota['texto']);
+    }
+
+    public function test_el_reporte_de_ingresos_se_emite_aunque_no_haya_cobros(): void
+    {
+        $this->actingAs($this->recepcionista(), 'sanctum')
+            ->get('/api/v1/reportes/ingresos?desde=2020-01-01&hasta=2020-01-31')
+            ->assertStatus(200)
+            ->assertHeader('Content-Type', 'application/pdf');
     }
 
     public function test_facturar_exige_sesion(): void

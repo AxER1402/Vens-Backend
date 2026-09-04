@@ -37,11 +37,12 @@ class ReportePeriodoTest extends TestCase
     private const HASTA = '2026-09-30';
 
     /**
-     * Los ocho reportes del catálogo con el prefijo del archivo que emiten.
+     * Los nueve reportes del catálogo con el prefijo del archivo que emiten.
      *
      * @var array<string, string>
      */
     private const REPORTES = [
+        'ingresos' => 'ingresos',
         'pacientes-atendidos' => 'pacientes-atendidos',
         'citas' => 'citas',
         'productividad-medico' => 'productividad-medico',
@@ -368,8 +369,9 @@ class ReportePeriodoTest extends TestCase
     }
 
     /**
-     * La recepcionista lleva la agenda, así que ve los reportes de agenda; la
-     * epidemiología de la consulta y la producción del personal, no.
+     * La recepcionista lleva la agenda y el mostrador, así que ve los reportes
+     * de agenda y el de ingresos; la epidemiología de la consulta y la
+     * producción del personal, no.
      */
     public function test_the_catalog_is_trimmed_for_a_receptionist(): void
     {
@@ -382,7 +384,7 @@ class ReportePeriodoTest extends TestCase
             ->json('data'))
             ->pluck('clave');
 
-        $this->assertEqualsCanonicalizing(['pacientes-atendidos', 'citas'], $claves->all());
+        $this->assertEqualsCanonicalizing(['pacientes-atendidos', 'citas', 'ingresos'], $claves->all());
     }
 
     public function test_a_receptionist_cannot_emit_a_restricted_report(): void
