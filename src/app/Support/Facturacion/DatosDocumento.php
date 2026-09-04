@@ -34,18 +34,25 @@ class DatosDocumento
             'subtitulo' => "No. {$this->documento->correlativo}",
             'archivo' => $esFactura ? 'factura' : 'recibo',
 
-            // Un documento anulado o una factura sin certificar se pueden
-            // imprimir —hacen falta para el archivo— pero no pueden salir a la
-            // calle con aspecto de documento válido.
-            'marca_agua' => $anulado ? 'ANULADO' : ($sinCertificar ? 'SIN CERTIFICAR' : null),
+            // La marca cruzada dice de un vistazo qué es el papel. «PAGADA» en
+            // el documento vigente —que es lo que acredita—, y las otras dos
+            // avisan de lo contrario: un anulado y una factura sin certificar
+            // se imprimen porque hacen falta para el archivo, pero no pueden
+            // salir a la calle con aspecto de documento válido.
+            'marca_agua' => $anulado
+                ? 'ANULADA'
+                : ($sinCertificar ? 'SIN CERTIFICAR' : 'PAGADA'),
 
-            'paciente' => Ficha::paciente($this->documento->patient),
+            // La cabecera de un recibo no es la ficha clínica del paciente:
+            // es de quién se recibió el dinero y por cuál documento.
+            'paciente' => $this->receptor(),
             'meta' => $this->meta(),
             'secciones' => array_values(array_filter([
                 $this->avisoDeEstado($anulado, $sinCertificar),
-                $this->receptor(),
                 $this->renglones(),
                 $this->cuentas(),
+                $this->enLetras(),
+                $this->porConceptoDe(),
                 $this->observaciones(),
             ])),
             'firma' => Ficha::firma($this->documento->creator),
@@ -61,11 +68,13 @@ class DatosDocumento
     {
         $emisor = config('facturacion.emisor');
 
+        // El nombre de la clínica ya va en el membrete de cada página; repetirlo
+        // aquí solo gastaba una casilla de la cabecera. El NIT no está arriba,
+        // así que ese sí se queda.
         return array_filter([
             'Documento' => $this->documento->correlativo,
             'Fecha de emisión' => Formato::fecha($this->documento->fecha_emision),
             'Método de pago' => Formato::valor($this->documento->metodo_pago),
-            'Emite' => Formato::valor($emisor['nombre'] ?? null),
             'NIT emisor' => Formato::hayDato($emisor['nit'] ?? null) ? $emisor['nit'] : null,
         ]);
     }
@@ -103,20 +112,71 @@ class DatosDocumento
     }
 
     /**
-     * @return array<string, mixed>
+     * Quién pagó. Va en la cabecera, que en un recibo es lo primero que se
+     * busca junto con el monto.
+     *
+     * @return array<string, string>
      */
     private function receptor(): array
     {
+        $paciente = $this->documento->patient?->nombre;
+        $recibido = $this->documento->nombre_receptor;
+
+        return array_filter([
+            'Recibí de' => Formato::valor($recibido),
+            'NIT' => Formato::valor($this->documento->nit_receptor),
+            'Dirección' => Formato::hayDato($this->documento->direccion_receptor)
+                ? Formato::valor($this->documento->direccion_receptor)
+                : null,
+            // Solo cuando difieren: quien paga no siempre es quien se atiende
+            // —un familiar, un seguro— y ahí sí hay que decir por quién se pagó.
+            'Paciente atendido' => $paciente && $paciente !== $recibido
+                ? Formato::valor($paciente)
+                : null,
+        ]);
+    }
+
+    /**
+     * El monto con letras. Un recibo lo lleva porque la cifra en números se
+     * altera con un trazo y el texto no.
+     *
+     * @return array<string, mixed>
+     */
+    private function enLetras(): array
+    {
         return [
-            'tipo' => 'campos',
-            'titulo' => 'Datos del receptor',
-            'campos' => array_filter([
-                'Nombre' => Formato::valor($this->documento->nombre_receptor),
-                'NIT' => Formato::valor($this->documento->nit_receptor),
-                'Dirección' => Formato::hayDato($this->documento->direccion_receptor)
-                    ? Formato::valor($this->documento->direccion_receptor)
-                    : null,
-            ]),
+            'tipo' => 'texto',
+            'titulo' => 'Cantidad recibida',
+            'texto' => Cantidad::enLetras((float) $this->documento->total),
+        ];
+    }
+
+    /**
+     * En qué se fue el dinero, en una línea. La tabla ya lo detalla, pero un
+     * recibo se lee de una pasada y esta es la frase que se busca.
+     *
+     * @return array<string, mixed>|null
+     */
+    private function porConceptoDe(): ?array
+    {
+        $conceptos = $this->documento->items
+            ->pluck('descripcion')
+            ->filter()
+            ->unique()
+            ->values();
+
+        if ($conceptos->isEmpty()) {
+            return null;
+        }
+
+        $texto = $conceptos->count() === 1
+            ? $conceptos->first()
+            : $conceptos->slice(0, -1)->implode(', ').' y '.$conceptos->last();
+
+        return [
+            'tipo' => 'texto',
+            'titulo' => 'Por concepto de',
+            'texto' => $texto.'.',
         ];
     }
 

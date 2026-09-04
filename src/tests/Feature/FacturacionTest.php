@@ -6,6 +6,8 @@ use App\Models\ClinicalHistory;
 use App\Models\Invoice;
 use App\Models\Patient;
 use App\Models\User;
+use App\Support\Facturacion\Cantidad;
+use App\Support\Facturacion\DatosDocumento;
 use App\Support\Reportes\Estadisticos\IngresosPorPeriodo;
 use App\Support\Reportes\Estadisticos\Periodo;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -362,6 +364,64 @@ class FacturacionTest extends TestCase
             ->get('/api/v1/reportes/ingresos?desde=2020-01-01&hasta=2020-01-31')
             ->assertStatus(200)
             ->assertHeader('Content-Type', 'application/pdf');
+    }
+
+    /**
+     * El de ingresos se emite desde la pantalla donde se cobra, no desde el
+     * centro de reportes, así que no aparece en el catálogo de aquella.
+     */
+    public function test_el_reporte_de_ingresos_pertenece_a_facturacion(): void
+    {
+        $recepcion = $this->recepcionista();
+
+        $deReportes = collect($this->actingAs($recepcion, 'sanctum')
+            ->getJson('/api/v1/reportes?modulo=reportes')
+            ->assertStatus(200)
+            ->json('data'))
+            ->pluck('clave');
+
+        $this->assertNotContains('ingresos', $deReportes->all());
+
+        $deFacturacion = collect($this->actingAs($recepcion, 'sanctum')
+            ->getJson('/api/v1/reportes?modulo=facturacion')
+            ->assertStatus(200)
+            ->json('data'))
+            ->pluck('clave');
+
+        $this->assertSame(['ingresos'], $deFacturacion->all());
+    }
+
+    public function test_el_monto_se_escribe_con_letras_en_el_recibo(): void
+    {
+        $this->assertSame(
+            'Mil ochocientos setenta y cinco quetzales con 00/100',
+            Cantidad::enLetras(1875)
+        );
+
+        // El uno se apocopa delante del nombre de la moneda
+        $this->assertSame('Un quetzal con 00/100', Cantidad::enLetras(1));
+        $this->assertSame('Veintiún quetzales con 50/100', Cantidad::enLetras(21.5));
+        $this->assertSame('Ciento un quetzales con 00/100', Cantidad::enLetras(101));
+
+        // Y el millón pide «de» solo cuando va pegado al nombre
+        $this->assertSame('Un millón de quetzales con 00/100', Cantidad::enLetras(1000000));
+        $this->assertStringStartsWith('Un millón doscientos mil quetzales', Cantidad::enLetras(1200000));
+    }
+
+    public function test_el_recibo_vigente_sale_marcado_como_pagada(): void
+    {
+        $recepcion = $this->recepcionista();
+        $documento = $this->actingAs($recepcion, 'sanctum')
+            ->postJson('/api/v1/invoices', $this->cobro())->json('data');
+
+        $modelo = Invoice::find($documento['id']);
+        $this->assertSame('PAGADA', (new DatosDocumento($modelo))->construir()['marca_agua']);
+
+        $this->actingAs($recepcion, 'sanctum')
+            ->patchJson("/api/v1/invoices/{$documento['id']}/anular", ['motivo_anulacion' => 'Duplicado'])
+            ->assertStatus(200);
+
+        $this->assertSame('ANULADA', (new DatosDocumento($modelo->fresh()))->construir()['marca_agua']);
     }
 
     public function test_facturar_exige_sesion(): void

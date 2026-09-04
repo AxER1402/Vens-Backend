@@ -32,7 +32,10 @@ class ReportePeriodoController extends Controller
     {
         return response()->json([
             'success' => true,
-            'data' => CatalogoReportes::descriptores($request->user()),
+            'data' => CatalogoReportes::descriptores(
+                $request->user(),
+                $request->query('modulo')
+            ),
         ]);
     }
 
