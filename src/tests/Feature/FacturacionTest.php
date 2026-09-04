@@ -205,13 +205,21 @@ class FacturacionTest extends TestCase
             ->assertJsonPath('data.fel_estado', 'No aplica');
     }
 
-    public function test_el_medico_no_emite_ni_anula(): void
+    /**
+     * La consulta se pasa a cobro desde la propia historia clínica, así que el
+     * médico tiene que poder emitir: es quien está delante del paciente cuando
+     * la cierra.
+     */
+    public function test_los_tres_roles_del_mostrador_pueden_cobrar(): void
     {
-        $medico = User::where('rol', 'medico')->first();
+        foreach (['administrador', 'medico', 'recepcionista'] as $rol) {
+            $usuario = User::where('rol', $rol)->first();
+            $this->assertNotNull($usuario, "El seeder debe crear un usuario con rol {$rol}.");
 
-        $this->actingAs($medico, 'sanctum')
-            ->postJson('/api/v1/invoices', $this->cobro())
-            ->assertStatus(403);
+            $this->actingAs($usuario, 'sanctum')
+                ->postJson('/api/v1/invoices', $this->cobro())
+                ->assertStatus(201, "El rol {$rol} no pudo emitir.");
+        }
     }
 
     public function test_el_cobro_puede_quedar_atado_a_una_consulta(): void

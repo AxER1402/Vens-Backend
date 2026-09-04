@@ -8,6 +8,7 @@ use App\Models\Invoice;
 use App\Support\Facturacion\Certificador;
 use App\Support\Facturacion\DatosDocumento;
 use App\Support\Facturacion\Totales;
+use App\Support\Listados\Pagina;
 use App\Support\Reportes\Emision;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -52,10 +53,10 @@ class InvoiceController extends Controller
             $query->vigentes();
         }
 
-        return response()->json([
-            'success' => true,
-            'data' => $query->orderByDesc('fecha_emision')->orderByDesc('id')->get(),
-        ], 200);
+        return response()->json(
+            Pagina::respuesta($request, $query->orderByDesc('fecha_emision')->orderByDesc('id')),
+            200
+        );
     }
 
     public function show(Invoice $invoice): JsonResponse

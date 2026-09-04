@@ -7,6 +7,7 @@ use App\Http\Requests\User\StoreUserRequest;
 use App\Http\Requests\User\UpdateUserRequest;
 use App\Models\User;
 use Illuminate\Http\JsonResponse;
+use App\Support\Listados\Pagina;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
 
@@ -17,14 +18,10 @@ class UserController extends Controller
      */
     public function index(Request $request): JsonResponse
     {
-        $users = User::select('id', 'name', 'email', 'rol', 'activo', 'telefono', 'created_at')
-            ->orderBy('created_at', 'desc')
-            ->get();
+        $query = User::select('id', 'name', 'email', 'rol', 'activo', 'telefono', 'created_at')
+            ->orderBy('created_at', 'desc');
 
-        return response()->json([
-            'success' => true,
-            'data' => $users,
-        ], 200);
+        return response()->json(Pagina::respuesta($request, $query), 200);
     }
 
     /**

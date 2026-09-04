@@ -7,12 +7,17 @@ use App\Http\Requests\Patient\StorePatientRequest;
 use App\Http\Requests\Patient\UpdatePatientRequest;
 use App\Models\Patient;
 use Illuminate\Http\JsonResponse;
+use App\Support\Listados\Pagina;
 use Illuminate\Http\Request;
 
 class PatientController extends Controller
 {
     /**
-     * Listar todos los pacientes con opción a filtros de búsqueda, estado y estado de activación.
+     * Listar pacientes con filtros de búsqueda, estado y activación.
+     *
+     * Con `?page=` o `?per_page=` responde por páginas y añade `meta`; sin
+     * ellos devuelve la lista entera, que es lo que necesitan los selectores
+     * de paciente y los reportes.
      */
     public function index(Request $request): JsonResponse
     {
@@ -37,12 +42,10 @@ class PatientController extends Controller
             $query->where('activo', filter_var($request->input('activo'), FILTER_VALIDATE_BOOLEAN));
         }
 
-        $patients = $query->orderBy('created_at', 'desc')->get();
-
-        return response()->json([
-            'success' => true,
-            'data' => $patients,
-        ], 200);
+        return response()->json(
+            Pagina::respuesta($request, $query->orderBy('created_at', 'desc')),
+            200
+        );
     }
 
     /**
