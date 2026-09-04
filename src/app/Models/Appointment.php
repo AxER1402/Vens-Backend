@@ -25,11 +25,21 @@ class Appointment extends Model
         'notas',
     ];
 
+    /**
+     * La hora de una cita es hora de pared, no un instante.
+     *
+     * «Las cinco de la tarde» es lo que se acordó con el paciente y lo que
+     * está escrito en la base; no lleva zona horaria porque no la necesita.
+     * Sin el formato explícito, Laravel serializa el cast `datetime` como
+     * instante UTC —«23:00Z» para las cinco de la tarde en Guatemala— y la
+     * agenda, que lee la hora tal como viene, pintaba la cita seis horas más
+     * tarde. Se serializa como se guardó.
+     */
     protected function casts(): array
     {
         return [
-            'fecha_hora_inicio' => 'datetime',
-            'fecha_hora_fin' => 'datetime',
+            'fecha_hora_inicio' => 'datetime:Y-m-d H:i:s',
+            'fecha_hora_fin' => 'datetime:Y-m-d H:i:s',
         ];
     }
 

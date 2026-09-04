@@ -54,7 +54,9 @@ class Invoice extends Model
     protected function casts(): array
     {
         return [
-            'fecha_emision' => 'date',
+            // Con formato explícito, como el resto de fechas del sistema: son
+            // fechas de calendario y viajan como tales, sin zona horaria.
+            'fecha_emision' => 'date:Y-m-d',
             'fel_certificado_at' => 'datetime',
             'subtotal' => 'decimal:2',
             'descuento' => 'decimal:2',
