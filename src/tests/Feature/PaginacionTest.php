@@ -144,6 +144,40 @@ class PaginacionTest extends TestCase
         $this->assertSame(User::count(), $respuesta->json('meta.total'));
     }
 
+    /**
+     * Filtrar en el navegador sobre una lista paginada haría que la búsqueda
+     * solo mirase los treinta de la página abierta.
+     */
+    public function test_los_usuarios_se_filtran_en_el_servidor(): void
+    {
+        User::create([
+            'name' => 'Rosa Elena Godoy',
+            'email' => 'rosa.godoy@vens.com',
+            'password' => bcrypt('Password123!'),
+            'rol' => 'recepcionista',
+            'activo' => true,
+            'telefono' => '+50255598765',
+        ]);
+
+        $porNombre = $this->actingAs($this->admin(), 'sanctum')
+            ->getJson('/api/v1/users?search=Godoy&page=1')
+            ->assertStatus(200);
+        $this->assertSame(1, $porNombre->json('meta.total'));
+
+        $porTelefono = $this->actingAs($this->admin(), 'sanctum')
+            ->getJson('/api/v1/users?search=55598765&page=1')
+            ->assertStatus(200);
+        $this->assertSame(1, $porTelefono->json('meta.total'));
+
+        $porRol = $this->actingAs($this->admin(), 'sanctum')
+            ->getJson('/api/v1/users?rol=administrador&page=1')
+            ->assertStatus(200);
+        $this->assertSame(
+            User::where('rol', 'administrador')->count(),
+            $porRol->json('meta.total')
+        );
+    }
+
     public function test_los_documentos_de_cobro_tambien_se_paginan(): void
     {
         $paciente = Patient::create([
