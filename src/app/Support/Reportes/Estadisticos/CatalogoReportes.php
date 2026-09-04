@@ -22,7 +22,11 @@ use Illuminate\Http\Request;
 final class CatalogoReportes
 {
     /**
-     * @var array<string, array{clase: class-string<ReportePeriodo>, titulo: string, descripcion: string, roles: array<int, string>, filtros: array<int, string>}>
+     * `modulo` dice desde qué pantalla se emite. El catálogo es a la vez el
+     * registro de los reportes y la lista que ve el usuario, y no todos se
+     * piden desde el mismo sitio: el de ingresos se emite donde se cobra.
+     *
+     * @var array<string, array{clase: class-string<ReportePeriodo>, titulo: string, descripcion: string, roles: array<int, string>, filtros: array<int, string>, modulo?: string}>
      */
     private const REPORTES = [
         'ingresos' => [
@@ -35,6 +39,7 @@ final class CatalogoReportes
             // la ventana abierta al lado.
             'roles' => ['administrador', 'medico', 'recepcionista'],
             'filtros' => ['patient_id'],
+            'modulo' => 'facturacion',
         ],
         'pacientes-atendidos' => [
             'clase' => PacientesAtendidos::class,
@@ -138,7 +143,7 @@ final class CatalogoReportes
      *
      * @return array<int, array<string, mixed>>
      */
-    public static function descriptores(?User $usuario): array
+    public static function descriptores(?User $usuario, ?string $modulo = null): array
     {
         $rol = $usuario?->rol;
 
@@ -149,11 +154,17 @@ final class CatalogoReportes
                 continue;
             }
 
+            // Sin filtro se devuelven todos; con él, solo los de esa pantalla.
+            if ($modulo !== null && ($definicion['modulo'] ?? 'reportes') !== $modulo) {
+                continue;
+            }
+
             $descriptores[] = [
                 'clave' => $clave,
                 'titulo' => $definicion['titulo'],
                 'descripcion' => $definicion['descripcion'],
                 'filtros' => $definicion['filtros'],
+                'modulo' => $definicion['modulo'] ?? 'reportes',
                 'formatos' => array_keys(Emision::TIPOS),
             ];
         }
