@@ -13,6 +13,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Password;
 use Illuminate\Support\Str;
+use Laravel\Sanctum\PersonalAccessToken;
 
 class AuthController extends Controller
 {
@@ -37,15 +38,21 @@ class AuthController extends Controller
             ], 403);
         }
 
-        // Crear token API con Sanctum
-        $token = $user->createToken('auth_token')->plainTextToken;
+        // Crear token API con Sanctum. La duración de la sesión la fija
+        // config/sanctum.php ('expiration'), una hora contada desde este
+        // momento, y se le informa al cliente para que pueda cerrar la sesión
+        // en la interfaz apenas se cumpla el plazo.
+        $tokenNuevo = $user->createToken('auth_token');
+        $expiracion = $this->expiracionDelToken($tokenNuevo->accessToken);
 
         return response()->json([
             'success' => true,
             'message' => 'Inicio de sesión exitoso.',
             'data' => [
-                'access_token' => $token,
+                'access_token' => $tokenNuevo->plainTextToken,
                 'token_type' => 'Bearer',
+                'expires_in' => $expiracion['expires_in'],
+                'expires_at' => $expiracion['expires_at'],
                 'user' => [
                     'id' => $user->id,
                     'name' => $user->name,
@@ -150,6 +157,7 @@ class AuthController extends Controller
     public function me(Request $request): JsonResponse
     {
         $user = $request->user();
+        $expiracion = $this->expiracionDelToken($user->currentAccessToken());
 
         return response()->json([
             'success' => true,
@@ -162,7 +170,38 @@ class AuthController extends Controller
                 'telefono' => $user->telefono,
                 'email_verified_at' => $user->email_verified_at,
                 'created_at' => $user->created_at,
+                'expires_in' => $expiracion['expires_in'],
+                'expires_at' => $expiracion['expires_at'],
             ],
         ], 200);
+    }
+
+    /**
+     * Calcular cuánto le queda de vida al token con el que se hizo la petición.
+     *
+     * Sanctum no guarda la fecha de vencimiento en la base de datos cuando la
+     * duración se define por configuración: la calcula sobre la fecha de
+     * creación del token. Aquí se hace la misma cuenta para poder devolverla.
+     *
+     * @return array{expires_in: int|null, expires_at: string|null}
+     */
+    private function expiracionDelToken(mixed $token): array
+    {
+        $minutos = (int) config('sanctum.expiration');
+
+        // Las sesiones de primera parte (cookie) no llevan token personal y
+        // tampoco vencen por esta vía.
+        if ($minutos <= 0 || ! $token instanceof PersonalAccessToken) {
+            return ['expires_in' => null, 'expires_at' => null];
+        }
+
+        $vence = $token->created_at->copy()->addMinutes($minutos);
+        // Se trunca hacia abajo para no prometer más tiempo del que queda.
+        $restante = max(0, (int) now()->diffInSeconds($vence, false));
+
+        return [
+            'expires_in' => (int) $restante,
+            'expires_at' => $vence->toIso8601String(),
+        ];
     }
 }

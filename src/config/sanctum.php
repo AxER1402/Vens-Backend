@@ -48,9 +48,13 @@ return [
     | considered expired. This will override any values set in the token's
     | "expires_at" attribute, but first-party sessions are not affected.
     |
+    | La sesión del sistema dura una hora exacta contada desde el inicio de
+    | sesión; pasado ese tiempo el token deja de autenticar y el usuario debe
+    | volver a ingresar sus credenciales.
+    |
     */
 
-    'expiration' => null,
+    'expiration' => (int) env('SANCTUM_TOKEN_EXPIRATION', 60),
 
     /*
     |--------------------------------------------------------------------------
