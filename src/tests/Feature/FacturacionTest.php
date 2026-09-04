@@ -237,6 +237,81 @@ class FacturacionTest extends TestCase
         $this->assertCount(1, $delExpediente);
     }
 
+    public function test_los_renglones_conservan_el_orden_en_que_se_escribieron(): void
+    {
+        // El tercer renglón es el único que trae 'tipo'. Basta ese detalle para
+        // que la petición validada devuelva los índices desordenados.
+        $respuesta = $this->actingAs($this->recepcionista(), 'sanctum')
+            ->postJson('/api/v1/invoices', $this->cobro([
+                'items' => [
+                    ['descripcion' => 'Primero', 'cantidad' => 1, 'precio_unitario' => 100],
+                    ['descripcion' => 'Segundo', 'cantidad' => 1, 'precio_unitario' => 200],
+                    ['descripcion' => 'Tercero', 'tipo' => 'B', 'cantidad' => 1, 'precio_unitario' => 300],
+                ],
+            ]))
+            ->assertStatus(201);
+
+        $this->assertSame(
+            ['Primero', 'Segundo', 'Tercero'],
+            array_column($respuesta->json('data.items'), 'descripcion'),
+            'El documento impreso tiene que listar los conceptos como se teclearon.'
+        );
+    }
+
+    public function test_el_documento_se_puede_imprimir_en_pdf_y_en_word(): void
+    {
+        $recepcion = $this->recepcionista();
+        $documento = $this->actingAs($recepcion, 'sanctum')
+            ->postJson('/api/v1/invoices', $this->cobro())->json('data');
+
+        $pdf = $this->actingAs($recepcion, 'sanctum')
+            ->get("/api/v1/invoices/{$documento['id']}/reporte?formato=pdf")
+            ->assertStatus(200);
+        $this->assertSame('application/pdf', $pdf->headers->get('Content-Type'));
+        $this->assertStringStartsWith('%PDF', $pdf->streamedContent());
+
+        $word = $this->actingAs($recepcion, 'sanctum')
+            ->get("/api/v1/invoices/{$documento['id']}/reporte?formato=docx")
+            ->assertStatus(200);
+        $this->assertSame(
+            'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+            $word->headers->get('Content-Type')
+        );
+    }
+
+    public function test_el_nombre_del_archivo_dice_qué_documento_es(): void
+    {
+        $recepcion = $this->recepcionista();
+        $documento = $this->actingAs($recepcion, 'sanctum')
+            ->postJson('/api/v1/invoices', $this->cobro())->json('data');
+
+        $respuesta = $this->actingAs($recepcion, 'sanctum')
+            ->get("/api/v1/invoices/{$documento['id']}/reporte?formato=pdf");
+
+        $this->assertStringContainsString('recibo', $respuesta->headers->get('Content-Disposition'));
+    }
+
+    public function test_un_formato_que_no_existe_se_rechaza(): void
+    {
+        $recepcion = $this->recepcionista();
+        $documento = $this->actingAs($recepcion, 'sanctum')
+            ->postJson('/api/v1/invoices', $this->cobro())->json('data');
+
+        $this->actingAs($recepcion, 'sanctum')
+            ->getJson("/api/v1/invoices/{$documento['id']}/reporte?formato=xlsx")
+            ->assertStatus(422);
+    }
+
+    public function test_el_medico_puede_imprimir_aunque_no_pueda_cobrar(): void
+    {
+        $documento = $this->actingAs($this->recepcionista(), 'sanctum')
+            ->postJson('/api/v1/invoices', $this->cobro())->json('data');
+
+        $this->actingAs(User::where('rol', 'medico')->first(), 'sanctum')
+            ->get("/api/v1/invoices/{$documento['id']}/reporte?formato=pdf")
+            ->assertStatus(200);
+    }
+
     public function test_facturar_exige_sesion(): void
     {
         $this->postJson('/api/v1/invoices', $this->cobro())->assertStatus(401);

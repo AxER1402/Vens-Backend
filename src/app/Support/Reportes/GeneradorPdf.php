@@ -39,9 +39,14 @@ class GeneradorPdf
         ])->render());
 
         // Un borrador se puede imprimir, pero no debe poder confundirse con un
-        // informe firmado.
-        if (! empty($doc['borrador'])) {
-            $mpdf->SetWatermarkText(config('reportes.borrador.texto'));
+        // informe firmado. Un documento puede además traer su propia leyenda
+        // —«ANULADO», «SIN CERTIFICAR»—: la palabra «BORRADOR» sirve para una
+        // consulta sin cerrar y no para una factura que sí se emitió.
+        $marcaAgua = $doc['marca_agua']
+            ?? (! empty($doc['borrador']) ? config('reportes.borrador.texto') : null);
+
+        if ($marcaAgua) {
+            $mpdf->SetWatermarkText($marcaAgua);
             $mpdf->watermarkTextAlpha = config('reportes.borrador.opacidad');
             $mpdf->showWatermarkText = true;
         }
