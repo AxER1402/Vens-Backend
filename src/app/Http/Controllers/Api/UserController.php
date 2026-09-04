@@ -6,22 +6,46 @@ use App\Http\Controllers\Controller;
 use App\Http\Requests\User\StoreUserRequest;
 use App\Http\Requests\User\UpdateUserRequest;
 use App\Models\User;
-use Illuminate\Http\JsonResponse;
 use App\Support\Listados\Pagina;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
 
 class UserController extends Controller
 {
     /**
-     * Listar todos los usuarios del sistema.
+     * Listar los usuarios del sistema.
+     *
+     * Los filtros se aplican aquí y no en la pantalla porque el listado se
+     * pagina: filtrando en el navegador, la búsqueda solo miraría los treinta
+     * de la página abierta y diría que no hay nadie que sí existe en la
+     * siguiente.
      */
     public function index(Request $request): JsonResponse
     {
-        $query = User::select('id', 'name', 'email', 'rol', 'activo', 'telefono', 'created_at')
-            ->orderBy('created_at', 'desc');
+        $query = User::select('id', 'name', 'email', 'rol', 'activo', 'telefono', 'created_at');
 
-        return response()->json(Pagina::respuesta($request, $query), 200);
+        if ($request->filled('search')) {
+            $search = $request->input('search');
+            $query->where(function ($q) use ($search) {
+                $q->where('name', 'like', "%{$search}%")
+                  ->orWhere('email', 'like', "%{$search}%")
+                  ->orWhere('telefono', 'like', "%{$search}%");
+            });
+        }
+
+        if ($request->filled('rol')) {
+            $query->where('rol', $request->input('rol'));
+        }
+
+        if ($request->has('activo') && $request->input('activo') !== '') {
+            $query->where('activo', filter_var($request->input('activo'), FILTER_VALIDATE_BOOLEAN));
+        }
+
+        return response()->json(
+            Pagina::respuesta($request, $query->orderBy('created_at', 'desc')),
+            200
+        );
     }
 
     /**
