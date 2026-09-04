@@ -20,7 +20,7 @@ class UserSeeder extends Seeder
                 'password' => Hash::make('Password123!'),
                 'rol' => 'administrador',
                 'activo' => true,
-                'telefono' => '+50370000001',
+                'telefono' => '50370000001',
             ],
             [
                 'name' => 'Dr. Carlos Mendoza (Flebólogo)',
@@ -28,7 +28,7 @@ class UserSeeder extends Seeder
                 'password' => Hash::make('Password123!'),
                 'rol' => 'medico',
                 'activo' => true,
-                'telefono' => '+50370000002',
+                'telefono' => '50370000002',
             ],
             [
                 'name' => 'Licda. Sofia Rivas (Recepcionista)',
@@ -36,7 +36,7 @@ class UserSeeder extends Seeder
                 'password' => Hash::make('Password123!'),
                 'rol' => 'recepcionista',
                 'activo' => true,
-                'telefono' => '+50370000003',
+                'telefono' => '50370000003',
             ],
             [
                 'name' => 'Enf. María López',
@@ -44,7 +44,7 @@ class UserSeeder extends Seeder
                 'password' => Hash::make('Password123!'),
                 'rol' => 'enfermera',
                 'activo' => true,
-                'telefono' => '+50370000004',
+                'telefono' => '50370000004',
             ],
         ];
 

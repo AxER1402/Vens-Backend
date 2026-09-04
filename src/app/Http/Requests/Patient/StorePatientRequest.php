@@ -2,6 +2,7 @@
 
 namespace App\Http\Requests\Patient;
 
+use App\Support\Contacto\Telefono;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 
@@ -16,6 +17,18 @@ class StorePatientRequest extends FormRequest
     }
 
     /**
+     * El teléfono llega como lo escribió quien lo copió de una tarjeta: con
+     * guiones, espacios o paréntesis. Se limpia antes de validar para que el
+     * sistema guarde siempre el mismo formato y la búsqueda encuentre.
+     */
+    protected function prepareForValidation(): void
+    {
+        if ($this->has('telefono')) {
+            $this->merge(['telefono' => Telefono::normalizar($this->input('telefono'))]);
+        }
+    }
+
+    /**
      * Get the validation rules that apply to the request.
      *
      * @return array<string, \Illuminate\Contracts\Validation\ValidationRule|array<mixed>|string>
@@ -25,7 +38,7 @@ class StorePatientRequest extends FormRequest
         return [
             'nombre' => ['required', 'string', 'max:255'],
             'edad' => ['required', 'integer', 'min:0', 'max:120'],
-            'telefono' => ['required', 'string', 'max:25'],
+            'telefono' => Telefono::reglas(true),
             'lugar_residencia' => ['required', 'string', 'max:255'],
             'estado_civil' => [
                 'required',
@@ -49,15 +62,14 @@ class StorePatientRequest extends FormRequest
      */
     public function messages(): array
     {
-        return [
+        return array_merge(Telefono::mensajes(), [
             'nombre.required' => 'El nombre completo del paciente es obligatorio.',
             'edad.required' => 'La edad del paciente es obligatoria.',
             'edad.integer' => 'La edad debe ser un número entero.',
-            'telefono.required' => 'El teléfono de contacto es obligatorio.',
             'lugar_residencia.required' => 'El lugar de residencia es obligatorio.',
             'estado_civil.required' => 'El estado civil es obligatorio.',
             'estado_civil.in' => 'El estado civil seleccionado no es válido.',
             'estado.in' => 'El estado del paciente debe ser: Activo, Seguimiento o Alta.',
-        ];
+        ]);
     }
 }

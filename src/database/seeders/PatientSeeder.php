@@ -16,7 +16,7 @@ class PatientSeeder extends Seeder
             [
                 'nombre' => 'María Eugenia López',
                 'edad' => 42,
-                'telefono' => '+50378901234',
+                'telefono' => '50378901234',
                 'lugar_residencia' => 'Colonia Escalón, San Salvador',
                 'estado_civil' => 'Casado/a',
                 'religion' => 'Católica',
@@ -26,7 +26,7 @@ class PatientSeeder extends Seeder
             [
                 'nombre' => 'Roberto Carlos Martínez',
                 'edad' => 58,
-                'telefono' => '+50371234567',
+                'telefono' => '50371234567',
                 'lugar_residencia' => 'Santa Tecla, La Libertad',
                 'estado_civil' => 'Casado/a',
                 'religion' => 'Evangélica',
@@ -36,7 +36,7 @@ class PatientSeeder extends Seeder
             [
                 'nombre' => 'Ana Beatriz Hernández',
                 'edad' => 35,
-                'telefono' => '+50377665544',
+                'telefono' => '50377665544',
                 'lugar_residencia' => 'Antiguo Cuscatlán, La Libertad',
                 'estado_civil' => 'Soltero/a',
                 'religion' => 'Ninguna',
@@ -46,7 +46,7 @@ class PatientSeeder extends Seeder
             [
                 'nombre' => 'José Fernando Ramos',
                 'edad' => 64,
-                'telefono' => '+50374433221',
+                'telefono' => '50374433221',
                 'lugar_residencia' => 'Soyapango, San Salvador',
                 'estado_civil' => 'Viudo/a',
                 'religion' => 'Católica',
