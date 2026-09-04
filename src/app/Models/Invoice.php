@@ -64,9 +64,14 @@ class Invoice extends Model
         ];
     }
 
+    /**
+     * Los renglones salen siempre en el orden en que se escribieron: sin
+     * ordenarlos, la base los devuelve como quiere y el documento impreso lista
+     * los conceptos en un orden distinto al que se tecleó en el mostrador.
+     */
     public function items(): HasMany
     {
-        return $this->hasMany(InvoiceItem::class, 'invoice_id');
+        return $this->hasMany(InvoiceItem::class, 'invoice_id')->orderBy('id');
     }
 
     public function patient(): BelongsTo

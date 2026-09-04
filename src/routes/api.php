@@ -76,6 +76,10 @@ Route::prefix('v1')->group(function () {
         Route::get('/invoices', [InvoiceController::class, 'index']);
         Route::get('/invoices/{invoice}', [InvoiceController::class, 'show']);
 
+        // El documento imprimible (?formato=pdf|docx). Sin restricción de rol,
+        // igual que los informes clínicos: quien lo ve puede entregarlo.
+        Route::get('/invoices/{invoice}/reporte', [InvoiceController::class, 'reporte']);
+
         Route::middleware('role:administrador,recepcionista')->group(function () {
             Route::post('/invoices', [InvoiceController::class, 'store']);
             Route::patch('/invoices/{invoice}/anular', [InvoiceController::class, 'anular']);

@@ -6,10 +6,13 @@ use App\Http\Controllers\Controller;
 use App\Http\Requests\Invoice\StoreInvoiceRequest;
 use App\Models\Invoice;
 use App\Support\Facturacion\Certificador;
+use App\Support\Facturacion\DatosDocumento;
 use App\Support\Facturacion\Totales;
+use App\Support\Reportes\Emision;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class InvoiceController extends Controller
 {
@@ -74,7 +77,14 @@ class InvoiceController extends Controller
         $datos = $request->validated();
         $ivaPorcentaje = (float) config('facturacion.iva_porcentaje', 12);
 
-        $cuentas = Totales::calcular($datos['items'], $ivaPorcentaje);
+        // validated() arma su resultado recorriendo las reglas, no los datos:
+        // como 'items.*.tipo' se valida antes que el resto y solo algunos
+        // renglones lo traen, los índices vuelven desordenados y el documento
+        // se imprimiría con los conceptos en otro orden del que se tecleó.
+        $renglones = $datos['items'];
+        ksort($renglones);
+
+        $cuentas = Totales::calcular(array_values($renglones), $ivaPorcentaje);
 
         $documento = DB::transaction(function () use ($datos, $cuentas, $ivaPorcentaje, $request): Invoice {
             $serie = (string) config('facturacion.serie', 'A');
@@ -137,6 +147,26 @@ class InvoiceController extends Controller
                 : "Recibo {$documento->correlativo} emitido.",
             'data' => $documento,
         ], 201);
+    }
+
+    /**
+     * El documento imprimible, en PDF o Word.
+     *
+     * Va sin restricción de rol, como los informes clínicos: quien puede ver el
+     * documento en pantalla puede entregárselo al paciente. Un anulado también
+     * se imprime —hace falta para el archivo— pero sale con la leyenda encima.
+     */
+    public function reporte(Request $request, Invoice $invoice): StreamedResponse|JsonResponse
+    {
+        $formato = Emision::formato($request);
+
+        if ($formato instanceof JsonResponse) {
+            return $formato;
+        }
+
+        $invoice->load(['items', 'patient', 'creator']);
+
+        return Emision::descargar((new DatosDocumento($invoice))->construir(), $formato);
     }
 
     /**
