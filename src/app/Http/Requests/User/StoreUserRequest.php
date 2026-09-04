@@ -2,6 +2,7 @@
 
 namespace App\Http\Requests\User;
 
+use App\Support\Contacto\Telefono;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 
@@ -16,6 +17,18 @@ class StoreUserRequest extends FormRequest
     }
 
     /**
+     * El teléfono llega como lo escribió quien lo copió de una tarjeta: con
+     * guiones, espacios o paréntesis. Se limpia antes de validar para que el
+     * sistema guarde siempre el mismo formato y la búsqueda encuentre.
+     */
+    protected function prepareForValidation(): void
+    {
+        if ($this->has('telefono')) {
+            $this->merge(['telefono' => Telefono::normalizar($this->input('telefono'))]);
+        }
+    }
+
+    /**
      * Get the validation rules that apply to the request.
      *
      * @return array<string, \Illuminate\Contracts\Validation\ValidationRule|array<mixed>|string>
@@ -27,7 +40,7 @@ class StoreUserRequest extends FormRequest
             'email' => ['required', 'string', 'email', 'max:255', 'unique:users,email'],
             'password' => ['required', 'string', 'min:8', 'confirmed'],
             'rol' => ['required', 'string', Rule::in(['administrador', 'medico', 'enfermera', 'recepcionista'])],
-            'telefono' => ['nullable', 'string', 'max:20'],
+            'telefono' => Telefono::reglas(false),
             'activo' => ['nullable', 'boolean'],
         ];
     }
@@ -37,7 +50,7 @@ class StoreUserRequest extends FormRequest
      */
     public function messages(): array
     {
-        return [
+        return array_merge(Telefono::mensajes(), [
             'name.required' => 'El nombre es obligatorio.',
             'name.string' => 'El nombre debe ser una cadena de texto.',
             'name.max' => 'El nombre no puede exceder los 255 caracteres.',
@@ -49,8 +62,7 @@ class StoreUserRequest extends FormRequest
             'password.confirmed' => 'La confirmación de la contraseña no coincide.',
             'rol.required' => 'El rol del usuario es obligatorio.',
             'rol.in' => 'El rol seleccionado no es válido. Los roles permitidos son: administrador, medico, enfermera, recepcionista.',
-            'telefono.max' => 'El teléfono no puede exceder los 20 caracteres.',
             'activo.boolean' => 'El campo activo debe ser un valor booleano (true o false).',
-        ];
+        ]);
     }
 }

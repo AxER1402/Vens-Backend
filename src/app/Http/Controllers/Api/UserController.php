@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Http\Requests\User\StoreUserRequest;
 use App\Http\Requests\User\UpdateUserRequest;
 use App\Models\User;
+use App\Support\Contacto\Telefono;
 use App\Support\Listados\Pagina;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -27,10 +28,15 @@ class UserController extends Controller
 
         if ($request->filled('search')) {
             $search = $request->input('search');
-            $query->where(function ($q) use ($search) {
+            $digitos = Telefono::normalizar($search);
+
+            $query->where(function ($q) use ($search, $digitos) {
                 $q->where('name', 'like', "%{$search}%")
-                  ->orWhere('email', 'like', "%{$search}%")
-                  ->orWhere('telefono', 'like', "%{$search}%");
+                  ->orWhere('email', 'like', "%{$search}%");
+
+                if ($digitos !== null) {
+                    $q->orWhere('telefono', 'like', "%{$digitos}%");
+                }
             });
         }
 

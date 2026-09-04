@@ -74,9 +74,11 @@ class PatientManagementTest extends TestCase
                 ]
             ]);
 
+        // El teléfono se guarda solo con dígitos: el «+» que trae el payload
+        // se limpia al validar, que es lo que hace que la búsqueda encuentre.
         $this->assertDatabaseHas('patients', [
             'nombre' => 'Carlos Alberto Fuentes',
-            'telefono' => '+50379998877',
+            'telefono' => '50379998877',
         ]);
     }
 

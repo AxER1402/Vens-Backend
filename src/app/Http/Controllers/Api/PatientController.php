@@ -7,6 +7,7 @@ use App\Http\Requests\Patient\StorePatientRequest;
 use App\Http\Requests\Patient\UpdatePatientRequest;
 use App\Models\Patient;
 use Illuminate\Http\JsonResponse;
+use App\Support\Contacto\Telefono;
 use App\Support\Listados\Pagina;
 use Illuminate\Http\Request;
 
@@ -26,9 +27,18 @@ class PatientController extends Controller
         // Filtro por término de búsqueda (nombre o teléfono)
         if ($request->filled('search')) {
             $search = $request->input('search');
-            $query->where(function ($q) use ($search) {
-                $q->where('nombre', 'like', "%{$search}%")
-                  ->orWhere('telefono', 'like', "%{$search}%");
+
+            // Quien busca escribe el teléfono como lo tiene anotado —con
+            // guiones o espacios— y lo guardado son solo dígitos. Se compara
+            // el término limpio para que «2222-2222» encuentre a «22222222».
+            $digitos = Telefono::normalizar($search);
+
+            $query->where(function ($q) use ($search, $digitos) {
+                $q->where('nombre', 'like', "%{$search}%");
+
+                if ($digitos !== null) {
+                    $q->orWhere('telefono', 'like', "%{$digitos}%");
+                }
             });
         }
 
