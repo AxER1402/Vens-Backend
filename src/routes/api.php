@@ -6,6 +6,7 @@ use App\Http\Controllers\Api\BlockedDayController;
 use App\Http\Controllers\Api\ClinicalHistoryController;
 use App\Http\Controllers\Api\ClinicalOptionController;
 use App\Http\Controllers\Api\DopplerReportController;
+use App\Http\Controllers\Api\NotificationController;
 use App\Http\Controllers\Api\PatientController;
 use App\Http\Controllers\Api\ReporteController;
 use App\Http\Controllers\Api\ReportePeriodoController;
@@ -66,6 +67,15 @@ Route::prefix('v1')->group(function () {
             Route::patch('/appointments/{appointment}/assign-patient', [AppointmentController::class, 'assignPatient']);
             Route::patch('/appointments/{appointment}/cancel', [AppointmentController::class, 'cancel']);
         });
+
+        // Avisos del campanario: los pacientes que vienen en lo que queda de hoy
+        // y mañana. Se calculan sobre la agenda, así que no hay que sincronizar
+        // nada cuando una cita se reagenda o se cancela; lo único que se guarda
+        // es cuáles descartó a mano cada usuario.
+        Route::get('/notifications', [NotificationController::class, 'index']);
+        Route::delete('/notifications', [NotificationController::class, 'destroyAll']);
+        Route::delete('/notifications/{clave}', [NotificationController::class, 'destroy'])
+            ->where('clave', '[a-z]+:[0-9]+');
 
         // Lectura de días bloqueados de la agenda (feriados, vacaciones y cierres)
         Route::get('/blocked-days', [BlockedDayController::class, 'index']);
