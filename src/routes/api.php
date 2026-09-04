@@ -6,6 +6,7 @@ use App\Http\Controllers\Api\BlockedDayController;
 use App\Http\Controllers\Api\ClinicalHistoryController;
 use App\Http\Controllers\Api\ClinicalOptionController;
 use App\Http\Controllers\Api\DopplerReportController;
+use App\Http\Controllers\Api\InvoiceController;
 use App\Http\Controllers\Api\NotificationController;
 use App\Http\Controllers\Api\PatientController;
 use App\Http\Controllers\Api\ReporteController;
@@ -66,6 +67,18 @@ Route::prefix('v1')->group(function () {
             Route::patch('/appointments/{appointment}', [AppointmentController::class, 'update']);
             Route::patch('/appointments/{appointment}/assign-patient', [AppointmentController::class, 'assignPatient']);
             Route::patch('/appointments/{appointment}/cancel', [AppointmentController::class, 'cancel']);
+        });
+
+        // Facturación: recibos internos y facturas electrónicas.
+        // La lectura la necesita también el centro de reportes para contar los
+        // ingresos del período, así que no está restringida por rol; emitir y
+        // anular sí, que son las que mueven dinero.
+        Route::get('/invoices', [InvoiceController::class, 'index']);
+        Route::get('/invoices/{invoice}', [InvoiceController::class, 'show']);
+
+        Route::middleware('role:administrador,recepcionista')->group(function () {
+            Route::post('/invoices', [InvoiceController::class, 'store']);
+            Route::patch('/invoices/{invoice}/anular', [InvoiceController::class, 'anular']);
         });
 
         // Avisos del campanario: los pacientes que vienen en lo que queda de hoy
