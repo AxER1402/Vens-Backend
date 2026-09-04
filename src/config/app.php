@@ -76,9 +76,13 @@ return [
     | will be used by the PHP date and date-time functions. The timezone
     | is set to "UTC" by default as it is suitable for most use cases.
     |
+    | Las horas de la agenda se guardan tal como se escriben en la clínica
+    | ("10:00" es las diez de la mañana en Guatemala), así que now() tiene que
+    | hablar el mismo idioma o "las citas de mañana" se corren seis horas.
+    |
     */
 
-    'timezone' => 'UTC',
+    'timezone' => env('APP_TIMEZONE', 'UTC'),
 
     /*
     |--------------------------------------------------------------------------
