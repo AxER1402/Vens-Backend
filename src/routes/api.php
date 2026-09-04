@@ -9,6 +9,7 @@ use App\Http\Controllers\Api\DopplerReportController;
 use App\Http\Controllers\Api\InvoiceController;
 use App\Http\Controllers\Api\NotificationController;
 use App\Http\Controllers\Api\PatientController;
+use App\Http\Controllers\Api\ProfileController;
 use App\Http\Controllers\Api\ReporteController;
 use App\Http\Controllers\Api\ReportePeriodoController;
 use App\Http\Controllers\Api\UserController;
@@ -36,8 +37,26 @@ Route::prefix('v1')->group(function () {
         Route::post('/auth/logout', [AuthController::class, 'logout']);
         Route::get('/auth/me', [AuthController::class, 'me']);
 
-        // Gestión de usuarios (listar, mostrar, crear, editar y desactivar)
-        Route::apiResource('users', UserController::class);
+        // La cuenta propia. Sin restricción de rol a propósito: administrar
+        // usuarios ajenos es cosa del administrador, pero cambiarse el nombre,
+        // el teléfono, la contraseña o la foto lo hace cada quien con lo suyo.
+        Route::put('/me', [ProfileController::class, 'update']);
+        Route::put('/me/password', [ProfileController::class, 'updatePassword']);
+        Route::post('/me/foto', [ProfileController::class, 'storeFoto']);
+        Route::delete('/me/foto', [ProfileController::class, 'destroyFoto']);
+
+        // El personal al que se le asigna una cita o un informe. Va aparte de
+        // la gestión de usuarios —y antes, para que /users/{user} no se lo
+        // trague— porque lo necesita quien agenda desde el mostrador, que no
+        // tiene por qué poder administrar cuentas.
+        Route::get('/medicos', [UserController::class, 'medicos']);
+
+        // Gestión de usuarios (listar, mostrar, crear, editar y desactivar).
+        // Restringido al administrador: quién entra al sistema y con qué rol no
+        // es decisión de recepción, y esconder la página en el frontend deja la
+        // puerta de la API abierta.
+        Route::apiResource('users', UserController::class)
+            ->middleware('role:administrador');
 
         // Lectura de Pacientes (disponible para personal autorizado)
         Route::get('/patients', [PatientController::class, 'index']);

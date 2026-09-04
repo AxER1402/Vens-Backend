@@ -55,6 +55,30 @@ class UserController extends Controller
     }
 
     /**
+     * El personal al que se le puede asignar una cita o un informe.
+     *
+     * Existe aparte del listado de usuarios porque no es lo mismo: aquel
+     * administra las cuentas y solo lo abre el administrador, mientras que
+     * este llena un selector que necesita también quien agenda desde el
+     * mostrador. Por eso devuelve el nombre y nada más: ni el correo, ni el
+     * teléfono, ni si la cuenta está activa; para elegir un médico en una
+     * lista no hace falta saber nada de eso.
+     */
+    public function medicos(): JsonResponse
+    {
+        $medicos = User::select('id', 'name', 'rol')
+            ->whereIn('rol', ['medico', 'administrador'])
+            ->where('activo', true)
+            ->orderBy('name')
+            ->get();
+
+        return response()->json([
+            'success' => true,
+            'data' => $medicos,
+        ], 200);
+    }
+
+    /**
      * Obtener el detalle de un usuario específico.
      */
     public function show(User $user): JsonResponse
