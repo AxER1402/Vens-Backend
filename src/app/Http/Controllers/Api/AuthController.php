@@ -60,6 +60,7 @@ class AuthController extends Controller
                     'rol' => $user->rol,
                     'activo' => $user->activo,
                     'telefono' => $user->telefono,
+                    'foto_url' => $user->foto_url,
                 ],
             ],
         ], 200);
@@ -168,6 +169,7 @@ class AuthController extends Controller
                 'rol' => $user->rol,
                 'activo' => $user->activo,
                 'telefono' => $user->telefono,
+                'foto_url' => $user->foto_url,
                 'email_verified_at' => $user->email_verified_at,
                 'created_at' => $user->created_at,
                 'expires_in' => $expiracion['expires_in'],
