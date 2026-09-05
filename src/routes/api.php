@@ -13,6 +13,7 @@ use App\Http\Controllers\Api\PatientController;
 use App\Http\Controllers\Api\ProfileController;
 use App\Http\Controllers\Api\ReporteController;
 use App\Http\Controllers\Api\ReportePeriodoController;
+use App\Http\Controllers\Api\ServiceController;
 use App\Http\Controllers\Api\UserController;
 use App\Http\Controllers\Api\VenousMapCatalogController;
 use Illuminate\Support\Facades\Route;
@@ -75,6 +76,19 @@ Route::prefix('v1')->group(function () {
         // puerta de la API abierta.
         Route::apiResource('users', UserController::class)
             ->middleware('role:administrador');
+
+        // Catálogo de servicios y tarifas. Lo lee quien cobra, porque de aquí
+        // se llenan los renglones del recibo; lo mantiene el administrador,
+        // porque un precio no se corrige desde el mostrador con un paciente
+        // delante.
+        Route::get('/services', [ServiceController::class, 'index']);
+
+        Route::middleware('role:administrador')->group(function () {
+            Route::post('/services', [ServiceController::class, 'store']);
+            Route::put('/services/{service}', [ServiceController::class, 'update']);
+            Route::patch('/services/{service}', [ServiceController::class, 'update']);
+            Route::delete('/services/{service}', [ServiceController::class, 'destroy']);
+        });
 
         // Lectura de Pacientes (disponible para personal autorizado)
         Route::get('/patients', [PatientController::class, 'index']);
