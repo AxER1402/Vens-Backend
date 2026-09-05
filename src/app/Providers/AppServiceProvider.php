@@ -2,6 +2,7 @@
 
 namespace App\Providers;
 
+use App\Support\Ajustes\Ajustes;
 use App\Support\Facturacion\Certificador;
 use App\Support\Facturacion\CertificadorPendiente;
 use Illuminate\Support\ServiceProvider;
@@ -24,6 +25,10 @@ class AppServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
-        //
+        // Lo que la clínica ajustó desde la pantalla pisa a lo que traen
+        // config/reportes.php y config/facturacion.php. Va aquí, y no en cada
+        // sitio que lee la configuración, para que los dieciséis que ya lo
+        // hacían no tengan que enterarse de que ahora hay una tabla detrás.
+        Ajustes::aplicarAConfig();
     }
 }

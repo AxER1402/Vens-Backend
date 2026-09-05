@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\Api\AjusteController;
 use App\Http\Controllers\Api\AppointmentController;
 use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\BlockedDayController;
@@ -44,6 +45,17 @@ Route::prefix('v1')->group(function () {
         Route::put('/me/password', [ProfileController::class, 'updatePassword']);
         Route::post('/me/foto', [ProfileController::class, 'storeFoto']);
         Route::delete('/me/foto', [ProfileController::class, 'destroyFoto']);
+
+        // Datos de la clínica. Leerlos es para todos —la pantalla de
+        // facturación necesita la moneda y el IVA para pintar los totales—;
+        // cambiarlos, solo del administrador: de ahí salen el membrete de los
+        // informes y el NIT de los recibos.
+        Route::get('/ajustes', [AjusteController::class, 'index']);
+
+        Route::middleware('role:administrador')->group(function () {
+            Route::put('/ajustes', [AjusteController::class, 'update']);
+            Route::post('/ajustes/logo', [AjusteController::class, 'storeLogo']);
+        });
 
         // El personal al que se le asigna una cita o un informe. Va aparte de
         // la gestión de usuarios —y antes, para que /users/{user} no se lo
