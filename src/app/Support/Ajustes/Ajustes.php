@@ -56,6 +56,14 @@ class Ajustes
         // ── Quién firma los informes ──
         'medico.nombre' => ['config' => 'reportes.medico.nombre', 'tipo' => 'texto', 'max' => 150],
         'medico.colegiado' => ['config' => 'reportes.medico.colegiado', 'tipo' => 'texto', 'max' => 30],
+
+        // ── Agenda ──
+        // Sin `config`: no pisan nada de config/, son ajustes propios que no
+        // existían antes. Y `editable` en false porque no los escribe el
+        // formulario de la clínica: el horario es una estructura de siete
+        // días y tiene su propia pantalla y su propia validación.
+        'agenda.horario' => ['tipo' => 'horario', 'editable' => false, 'default' => []],
+        'agenda.duracion_cita' => ['tipo' => 'entero', 'editable' => false, 'default' => 30],
     ];
 
     /**
@@ -85,10 +93,32 @@ class Ajustes
         foreach (self::CAMPOS as $clave => $campo) {
             $valores[$clave] = array_key_exists($clave, $guardados)
                 ? $guardados[$clave]
-                : config($campo['config']);
+                : self::deFabrica($campo);
         }
 
         return $valores;
+    }
+
+    /**
+     * Un ajuste suelto, sin traerse los catorce.
+     */
+    public static function obtener(string $clave): mixed
+    {
+        $guardados = self::guardados();
+
+        if (array_key_exists($clave, $guardados)) {
+            return $guardados[$clave];
+        }
+
+        return isset(self::CAMPOS[$clave]) ? self::deFabrica(self::CAMPOS[$clave]) : null;
+    }
+
+    /**
+     * @param  array{config?: string, default?: mixed}  $campo
+     */
+    private static function deFabrica(array $campo): mixed
+    {
+        return isset($campo['config']) ? config($campo['config']) : ($campo['default'] ?? null);
     }
 
     /**
@@ -129,6 +159,10 @@ class Ajustes
 
         $nuevos = [];
         foreach (self::CAMPOS as $clave => $campo) {
+            if (! isset($campo['config'])) {
+                continue;
+            }
+
             if (! array_key_exists($clave, $guardados) || $guardados[$clave] === null) {
                 continue;
             }

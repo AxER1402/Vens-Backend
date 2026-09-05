@@ -10,6 +10,7 @@ use App\Http\Requests\Appointment\UpdateAppointmentRequest;
 use App\Models\Appointment;
 use App\Models\BlockedDay;
 use App\Models\Patient;
+use App\Support\Agenda\Horario;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
@@ -122,6 +123,17 @@ class AppointmentController extends Controller
             ], 422);
         }
 
+        // Y fuera del horario de atención tampoco se agenda. Va después del
+        // bloqueo porque un feriado es una razón más concreta que «ese día no
+        // se atiende», y conviene que sea la que se lea primero.
+        $fuera = $this->motivoFueraDeHorario($inicio, $fin);
+        if ($fuera) {
+            return response()->json([
+                'success' => false,
+                'message' => "No se puede agendar: {$fuera}",
+            ], 422);
+        }
+
         // Verificación de choque de horarios para el médico si está asignado
         if ($medicoId && !$request->boolean('ignore_conflict')) {
             $conflict = $this->checkScheduleConflict($medicoId, $inicio, $fin);
@@ -174,6 +186,19 @@ class AppointmentController extends Controller
                     'success' => false,
                     'message' => "No se puede reagendar a esa fecha: la agenda está bloqueada ({$blocked->tipo} — {$blocked->motivo}).",
                     'blocked_day' => $blocked,
+                ], 422);
+            }
+        }
+
+        // Igual que con el bloqueo: solo se revisa el horario si la cita se
+        // está moviendo. Una cita que ya existía cuando el horario era otro se
+        // puede seguir cancelando o editando.
+        if ($inicio != $appointment->fecha_hora_inicio || $fin != $appointment->fecha_hora_fin) {
+            $fuera = $this->motivoFueraDeHorario($inicio, $fin);
+            if ($fuera) {
+                return response()->json([
+                    'success' => false,
+                    'message' => "No se puede reagendar: {$fuera}",
                 ], 422);
             }
         }
@@ -258,6 +283,15 @@ class AppointmentController extends Controller
         $fecha = Carbon::parse($inicio)->format('Y-m-d');
 
         return BlockedDay::coveringDate($fecha)->first();
+    }
+
+    /**
+     * Qué impide agendar en ese rango por el horario de atención, o null si
+     * nada lo impide (que es siempre, mientras no se configure un horario).
+     */
+    private function motivoFueraDeHorario(string|Carbon $inicio, string|Carbon $fin): ?string
+    {
+        return Horario::motivoFuera(Carbon::parse($inicio), Carbon::parse($fin));
     }
 
     /**

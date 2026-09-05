@@ -4,7 +4,9 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Ajuste\StoreLogoRequest;
+use App\Http\Requests\Ajuste\UpdateAgendaRequest;
 use App\Http\Requests\Ajuste\UpdateAjustesRequest;
+use App\Support\Agenda\Horario;
 use App\Support\Ajustes\Ajustes;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Arr;
@@ -51,6 +53,71 @@ class AjusteController extends Controller
     }
 
     /**
+     * Guardar el horario de atención y la duración de una cita.
+     *
+     * Aparte de update() porque el horario no es un texto más: son siete días
+     * con su propia validación, y quien lo cambia no es solo el
+     * administrador —la agenda también es cosa del médico, igual que los
+     * feriados y las vacaciones.
+     */
+    public function updateAgenda(UpdateAgendaRequest $request): JsonResponse
+    {
+        $valores = [];
+
+        if ($request->has('horario')) {
+            $valores['agenda.horario'] = $this->horarioLimpio($request->input('horario', []));
+        }
+
+        if ($request->has('duracion_cita')) {
+            $valores['agenda.duracion_cita'] = (int) $request->input('duracion_cita');
+        }
+
+        Ajustes::guardar($valores);
+
+        return response()->json([
+            'success' => true,
+            'message' => 'El horario de atención se actualizó.',
+            'data' => $this->cuerpo(),
+        ], 200);
+    }
+
+    /**
+     * Deja el horario con los siete días y solo con lo que se entiende.
+     *
+     * Un día inactivo pierde sus horas: guardarlas invitaría a que la próxima
+     * pantalla las mostrara y diera a entender que se atiende un día cerrado.
+     *
+     * Y si no queda ningún día abierto se guarda vacío, que es como se dice
+     * «sin horario» y devuelve la agenda a aceptar cualquier hora. Los siete
+     * días cerrados serían lo contrario —la agenda entera bloqueada, sin
+     * manera de agendar nada—, y nadie que desmarca las siete casillas está
+     * pidiendo eso: está quitando la restricción. Para cerrar de verdad unos
+     * días están los bloqueos, que llevan motivo y fecha.
+     *
+     * @param  array<string, mixed>  $entrante
+     * @return array<string, array{activo: bool, abre: ?string, cierra: ?string}>
+     */
+    private function horarioLimpio(array $entrante): array
+    {
+        $limpio = [];
+        $algunoAbierto = false;
+
+        foreach (Horario::DIAS as $dia) {
+            $tramo = is_array($entrante[$dia] ?? null) ? $entrante[$dia] : [];
+            $activo = (bool) ($tramo['activo'] ?? false);
+            $algunoAbierto = $algunoAbierto || $activo;
+
+            $limpio[$dia] = [
+                'activo' => $activo,
+                'abre' => $activo ? ($tramo['abre'] ?? null) : null,
+                'cierra' => $activo ? ($tramo['cierra'] ?? null) : null,
+            ];
+        }
+
+        return $algunoAbierto ? $limpio : [];
+    }
+
+    /**
      * Subir el logo del membrete.
      */
     public function storeLogo(StoreLogoRequest $request): JsonResponse
@@ -93,6 +160,13 @@ class AjusteController extends Controller
         return [
             'ajustes' => $valores,
             'logo_url' => $logo ? asset($logo) : null,
+
+            // El horario se devuelve ya con los siete días aunque nunca se
+            // haya guardado: así la pantalla pinta la tabla sin tener que
+            // inventarse los días que faltan, y la agenda sabe que un horario
+            // vacío significa «sin restricción».
+            'horario' => Horario::configurado(),
+            'duracion_cita' => Horario::duracionCita(),
         ];
     }
 }
