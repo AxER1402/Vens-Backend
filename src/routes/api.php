@@ -57,6 +57,12 @@ Route::prefix('v1')->group(function () {
             Route::post('/ajustes/logo', [AjusteController::class, 'storeLogo']);
         });
 
+        // El horario de atención lo cambia también el médico, con el mismo
+        // criterio que los días bloqueados: quien decide cuándo se atiende es
+        // quien atiende.
+        Route::put('/ajustes/agenda', [AjusteController::class, 'updateAgenda'])
+            ->middleware('role:administrador,medico');
+
         // El personal al que se le asigna una cita o un informe. Va aparte de
         // la gestión de usuarios —y antes, para que /users/{user} no se lo
         // trague— porque lo necesita quien agenda desde el mostrador, que no
