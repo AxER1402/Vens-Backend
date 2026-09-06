@@ -48,13 +48,30 @@ return [
     | considered expired. This will override any values set in the token's
     | "expires_at" attribute, but first-party sessions are not affected.
     |
-    | La sesión del sistema dura una hora exacta contada desde el inicio de
-    | sesión; pasado ese tiempo el token deja de autenticar y el usuario debe
-    | volver a ingresar sus credenciales.
+    | Aquí va en null a propósito: la sesión del sistema no vence a plazo fijo
+    | desde el inicio de sesión, sino por inactividad. Quien está trabajando no
+    | debe verse interrumpido a mitad de una factura sólo porque el reloj marcó
+    | una hora. De la caducidad real se encarga 'inactividad', abajo.
     |
     */
 
-    'expiration' => (int) env('SANCTUM_TOKEN_EXPIRATION', 60),
+    'expiration' => null,
+
+    /*
+    |--------------------------------------------------------------------------
+    | Minutos de inactividad
+    |--------------------------------------------------------------------------
+    |
+    | Minutos que puede pasar un token sin usarse antes de dejar de autenticar.
+    | El plazo se cuenta desde la última petición hecha con él, así que mientras
+    | el usuario trabaje la sesión se renueva sola, y una pantalla abandonada se
+    | cierra sin que nadie tenga que acordarse de hacerlo.
+    |
+    | En cero o menos la sesión no vence nunca.
+    |
+    */
+
+    'inactividad' => (int) env('SANCTUM_TOKEN_INACTIVITY', 60),
 
     /*
     |--------------------------------------------------------------------------

@@ -17,9 +17,10 @@ Sistema de gestión para un centro médico especializado en Flebología.
 6. [Módulos del Sistema](#módulos-del-sistema)
 7. [Estructura del Proyecto](#estructura-del-proyecto)
 8. [API Endpoints](#api-endpoints)
-9. [Correo y Recuperación de Contraseña](#correo-y-recuperación-de-contraseña)
-10. [Solución de Problemas](#solución-de-problemas)
-11. [Historial de Cambios](#historial-de-cambios)
+9. [Sesión y Vencimiento](#sesión-y-vencimiento)
+10. [Correo y Recuperación de Contraseña](#correo-y-recuperación-de-contraseña)
+11. [Solución de Problemas](#solución-de-problemas)
+12. [Historial de Cambios](#historial-de-cambios)
 
 ---
 
@@ -427,6 +428,49 @@ POST   /api/consultas            # Registrar consulta
 GET    /api/medicos              # Listar médicos
 GET    /api/reportes/estadisticas # Estadísticas del centro
 ```
+
+---
+
+## 🔐 Sesión y Vencimiento
+
+La sesión **no dura un plazo fijo desde el inicio**: dura mientras se use. El reloj se
+reinicia con cada petición a la API, así que a quien está atendiendo pacientes no se le
+cierra la pantalla a media factura, y la computadora que quedó abierta en recepción se
+cierra sola pasada la hora sin que nadie tenga que acordarse.
+
+| Variable | Valor | Qué significa |
+|---|---|---|
+| `SANCTUM_TOKEN_INACTIVITY` | `60` | Minutos que puede pasar el token **sin usarse** antes de dejar de autenticar. En `0` la sesión no vence. |
+
+**Cómo se mide, y por qué no cuesta nada.** Sanctum ya escribía `last_used_at` en
+`personal_access_tokens` con cada petición autenticada, con o sin esta función: la última
+señal de vida del usuario ya estaba en la base. `App\Support\Sesion\VencimientoDeSesion`
+solo la lee, desde el punto de enganche que el propio Sanctum ofrece
+(`Sanctum::authenticateAccessTokensUsing`, registrado en `AppServiceProvider`). No hay
+procesos vigilando, ni tareas programadas, ni una sola consulta añadida. El servidor no
+observa el ratón ni el teclado —no puede—: solo cuentan las peticiones a la API.
+
+**Qué recibe el frontend.** Además de `expires_in` / `expires_at` en `login` y en
+`/auth/me`, **toda respuesta autenticada** trae dos cabeceras:
+
+```
+X-Session-Expires-In: 3600
+X-Session-Expires-At: 2026-09-05T09:00:00-06:00
+```
+
+El cliente debe **reiniciar su cuenta atrás con cada respuesta**. Si se quedara con el
+`expires_at` del inicio de sesión, cerraría la pantalla a la hora exacta aunque el usuario
+llevara todo ese rato trabajando, que es justo lo que se quiso evitar. Las cabeceras están
+declaradas en `exposed_headers` de `config/cors.php`; sin eso el navegador se las
+escondería al JavaScript.
+
+Cumplido el plazo, la API responde `401` con
+`"Su sesión no es válida o ha expirado. Vuelva a iniciar sesión."`, la señal con la que el
+frontend cierra la sesión y avisa.
+
+Los tokens que murieron por inactividad se borran en el siguiente inicio de sesión de ese
+mismo usuario, para que la tabla no crezca sin límite. Iniciar sesión en otro dispositivo
+no cierra las sesiones vivas.
 
 ---
 

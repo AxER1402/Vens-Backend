@@ -16,6 +16,7 @@ use App\Http\Controllers\Api\ReportePeriodoController;
 use App\Http\Controllers\Api\ServiceController;
 use App\Http\Controllers\Api\UserController;
 use App\Http\Controllers\Api\VenousMapCatalogController;
+use App\Http\Middleware\AnunciaVencimientoDeSesion;
 use Illuminate\Support\Facades\Route;
 
 /*
@@ -34,8 +35,10 @@ Route::prefix('v1')->group(function () {
     Route::post('/auth/reset-password', [AuthController::class, 'resetPassword'])
         ->middleware('throttle:5,1');
 
-    // Rutas protegidas con Laravel Sanctum
-    Route::middleware('auth:sanctum')->group(function () {
+    // Rutas protegidas con Laravel Sanctum. Cada respuesta lleva de vuelta
+    // cuándo vence la sesión, porque el plazo se corre con cada petición y el
+    // frontend necesita reajustar su cuenta atrás.
+    Route::middleware(['auth:sanctum', AnunciaVencimientoDeSesion::class])->group(function () {
         Route::post('/auth/logout', [AuthController::class, 'logout']);
         Route::get('/auth/me', [AuthController::class, 'me']);
 
