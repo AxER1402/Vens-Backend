@@ -24,7 +24,7 @@ return [
     //
     // El valor por defecto es FRONTEND_URL, que es el único origen que
     // legítimamente consume esta API:
-    //   - En desarrollo, http://localhost:5173 (el servidor de Vite).
+    //   - En desarrollo, http://localhost:8000, el mismo Nginx que sirve la API.
     //   - En producción con la imagen unificada, el mismo dominio de la
     //     aplicación, así que ya no hay peticiones entre orígenes que valga
     //     la pena permitir y esta lista deja de usarse.

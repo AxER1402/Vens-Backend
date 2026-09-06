@@ -59,13 +59,23 @@ return [
     | Frontend URL
     |--------------------------------------------------------------------------
     |
-    | URL base de la aplicación cliente (React + Vite). Se utiliza para armar
-    | los enlaces que se envían por correo, como el de restablecimiento de
+    | URL base de la aplicación cliente (React). Se utiliza para armar los
+    | enlaces que se envían por correo, como el de restablecimiento de
     | contraseña, ya que este backend es una API pura y no expone vistas.
+    |
+    | El valor de reserva es APP_URL y no una dirección escrita a mano: desde
+    | que el frontend y la API se sirven desde el mismo Nginx, comparten
+    | origen, así que la dirección de la aplicación es también la del cliente.
+    |
+    | Antes aquí estaba escrito http://localhost:5173, el puerto del servidor
+    | de Vite cuando el frontend era un contenedor aparte. Ese puerto ya no
+    | atiende a nadie, así que si FRONTEND_URL faltaba en el .env el correo de
+    | recuperación mandaba al usuario a una dirección muerta y el navegador
+    | respondía que la conexión había sido rechazada.
     |
     */
 
-    'frontend_url' => env('FRONTEND_URL', 'http://localhost:5173'),
+    'frontend_url' => env('FRONTEND_URL', env('APP_URL', 'http://localhost:8000')),
 
     /*
     |--------------------------------------------------------------------------
