@@ -19,8 +19,9 @@ Sistema de gestión para un centro médico especializado en Flebología.
 8. [API Endpoints](#api-endpoints)
 9. [Sesión y Vencimiento](#sesión-y-vencimiento)
 10. [Correo y Recuperación de Contraseña](#correo-y-recuperación-de-contraseña)
-11. [Solución de Problemas](#solución-de-problemas)
-12. [Historial de Cambios](#historial-de-cambios)
+11. [Despliegue a Producción](#despliegue-a-producción)
+12. [Solución de Problemas](#solución-de-problemas)
+13. [Historial de Cambios](#historial-de-cambios)
 
 ---
 
@@ -55,203 +56,146 @@ Antes de comenzar, asegúrate de tener instalado:
 
 ## 🏗 Arquitectura y Contenedores
 
-### ¿Por qué 5 contenedores?
+### ¿Por qué 4 contenedores?
 
-Cada contenedor tiene una **única responsabilidad** (principio de separación de concerns).
-Esto permite escalar, actualizar o reiniciar cada componente de forma independiente.
+La aplicación —frontend y backend— vive en **un solo contenedor**. Alrededor
+quedan tres servicios de infraestructura, que son imágenes oficiales sin
+modificar y arrancan con el mismo comando.
 
 ```
 ┌──────────────────────────────────────────────────────────────────┐
 │                  Docker Network: vens_network                    │
 │                                                                  │
-│  ┌─────────────────────────────────────────────────────────┐    │
-│  │  ENTRADA: Tu navegador / Frontend React                  │    │
-│  └────────────────────────┬────────────────────────────────┘    │
-│                           │ HTTP :8000                           │
-│                           ▼                                      │
-│  ┌─────────────────────────────────────────────────────────┐    │
-│  │  1. vens_nginx  (Nginx 1.25)                             │    │
-│  │     Servidor web — recibe peticiones, sirve assets       │    │
-│  └────────────────────────┬────────────────────────────────┘    │
-│                           │ FastCGI :9000                        │
-│                           ▼                                      │
-│  ┌─────────────────────────────────────────────────────────┐    │
-│  │  2. vens_app  (PHP 8.4 FPM + Laravel 13)                 │    │
-│  │     Lógica de negocio — procesa rutas, modelos, API      │    │
-│  └───────────┬──────────────────────┬───────────────────────┘   │
+│                    Tu navegador  │  http://localhost:8000        │
+│                                  ▼                               │
+│  ┌────────────────────────────────────────────────────────────┐ │
+│  │  1. vens_app — LA APLICACIÓN COMPLETA                      │ │
+│  │  ┌──────────────────────────────────────────────────────┐  │ │
+│  │  │  Supervisor (proceso principal)                      │  │ │
+│  │  │    ├── Nginx    :80    reparte las peticiones        │  │ │
+│  │  │    │     /api/*     → PHP-FPM                        │  │ │
+│  │  │    │     /storage/* → archivos subidos               │  │ │
+│  │  │    │     /img/*     → isotipo, plantilla de mapeo    │  │ │
+│  │  │    │     resto      → Vite (proxy, con HMR)          │  │ │
+│  │  │    ├── PHP-FPM  :9000  Laravel 13   (solo interno)   │  │ │
+│  │  │    └── Vite     :5173  React 19     (solo interno)   │  │ │
+│  │  └──────────────────────────────────────────────────────┘  │ │
+│  └───────────┬──────────────────────┬─────────────────────────┘ │
 │              │ SQL :3306            │ Redis :6379                │
 │              ▼                      ▼                            │
-│  ┌───────────────────┐  ┌──────────────────────┐               │
-│  │  3. vens_mysql    │  │  4. vens_redis        │               │
-│  │  (MySQL 8.0)      │  │  (Redis 7.2)          │               │
-│  │  Base de datos    │  │  Caché + Colas        │               │
-│  │  principal        │  │  de trabajos          │               │
-│  └───────────────────┘  └──────────────────────┘               │
-│              │                                                   │
-│              ▼                                                   │
+│  ┌───────────────────┐  ┌──────────────────────┐                │
+│  │  2. vens_mysql    │  │  3. vens_redis        │                │
+│  │  (MySQL 8.0)      │  │  (Redis 7.2)          │                │
+│  │  Base de datos    │  │  Caché + sesiones     │                │
+│  └─────────┬─────────┘  └──────────────────────┘                │
+│            │                                                     │
+│            ▼                                                     │
 │  ┌─────────────────────────────────────────────────────────┐    │
-│  │  5. vens_phpmyadmin  (phpMyAdmin)                        │    │
-│  │     Interfaz web para administrar MySQL :8080            │    │
+│  │  4. vens_phpmyadmin — administrar la BD  :8080          │    │
 │  └─────────────────────────────────────────────────────────┘    │
 └──────────────────────────────────────────────────────────────────┘
 ```
+
+**Todo se abre en `http://localhost:8000`.** La pantalla y la API comparten
+dirección, así que no hay CORS y el frontend llama a la API con rutas
+relativas. El puerto `5173` ya no se usa.
 
 ### Descripción de cada contenedor
 
 | Contenedor | Rol | Acceso | ¿Para qué sirve? |
 |---|---|---|---|
-| **vens_nginx** | Servidor Web | `localhost:8000` | Recibe todas las peticiones HTTP del exterior. Si el archivo es estático (imagen, CSS) lo sirve directamente. Si es PHP, lo reenvía a `vens_app`. |
-| **vens_app** | Aplicación PHP | Solo interno | Ejecuta el código Laravel. Procesa las rutas de la API, valida datos, ejecuta lógica de negocio, consulta la BD. |
+| **vens_app** | Aplicación | `localhost:8000` | Los tres procesos de la aplicación. Nginx recibe las peticiones; las de `/api` van a PHP-FPM (Laravel) y el resto al servidor de Vite, que sirve React con recarga en caliente. |
 | **vens_mysql** | Base de Datos | `localhost:3306` | Almacena todos los datos: pacientes, citas, médicos, diagnósticos. Motor relacional SQL. |
-| **vens_redis** | Caché y Colas | `localhost:6379` | Almacena datos temporales en memoria (muy rápido). Usado para caché de consultas frecuentes y para procesar emails/notificaciones en segundo plano. |
-| **vens_phpmyadmin** | Admin BD | `localhost:8080` | Interfaz visual para explorar y gestionar la base de datos MySQL sin necesidad de usar la terminal. |
+| **vens_redis** | Caché y Colas | `localhost:6379` | Almacena datos temporales en memoria (muy rápido). Usado para caché de consultas frecuentes, sesiones y para procesar emails/notificaciones en segundo plano. |
+| **vens_phpmyadmin** | Admin BD | `localhost:8080` | Interfaz visual para explorar y gestionar la base de datos MySQL sin usar la terminal. |
+
+### ¿Por qué el frontend está aquí dentro?
+
+Porque no hay que arrancar nada por separado: un `make up` levanta la
+aplicación entera. El código de React sigue viviendo en su propio repositorio
+(`Frontend-Vens/`) y `docker-compose.yml` lo monta como volumen en `/app`, así
+que se edita igual que siempre y Vite recarga el navegador solo.
+
+Nginx **no sirve archivos compilados en desarrollo**: hace de proxy hacia
+Vite, incluido el WebSocket con el que Vite avisa de cada cambio. Por eso la
+recarga en caliente funciona exactamente igual que cuando el frontend tenía su
+propio contenedor.
+
+En producción es al revés: la SPA se compila dentro de la imagen y Nginx sirve
+los archivos estáticos, sin Vite. Ver [Despliegue a Producción](#despliegue-a-producción).
 
 ---
 
 ## 🚀 Configuración Inicial
 
-Sigue estos pasos **en orden** para configurar el entorno por primera vez:
+El contenedor se configura solo en el primer arranque. No hay que instalar
+dependencias a mano ni generar la clave por separado: el `entrypoint` de
+`docker/dev/Dockerfile` se encarga.
 
-### Paso 1 — Clonar o acceder al proyecto
+### Requisito previo
+
+Los **dos repositorios** tienen que estar clonados uno al lado del otro, porque
+`docker-compose.yml` monta el frontend desde la carpeta de al lado:
+
+```
+Proyecto de Graduación 2/
+├── Backend-Vens/     ← aquí se ejecutan todos los comandos
+└── Frontend-Vens/    ← se monta en /app dentro del contenedor
+```
+
+### Arrancar
 
 ```bash
-# Si usas Git, clonar el repositorio:
-git clone <url-del-repositorio> .
-
-# O simplemente navegar al directorio del proyecto:
 cd "Backend-Vens"
+
+make build     # Construye la imagen (solo la primera vez, o si cambia el Dockerfile)
+make up        # Levanta los 4 contenedores
+make logs-app  # Sigue el primer arranque
 ```
 
-**¿Qué hace?** Accede al directorio donde están todos los archivos de configuración.
+El primer `make up` tarda varios minutos porque instala `vendor/` y
+`node_modules/` dentro de sus volúmenes. Termina cuando en los logs aparece:
 
----
-
-### Paso 2 — Instalar Laravel dentro del contenedor
-
-```bash
-# Construir las imágenes Docker primero
-docker-compose build
-
-# Levantar SOLO el servicio PHP temporalmente
-docker-compose run --rm app composer create-project laravel/laravel .
+```
+[vens] Listo. Arrancando Nginx, PHP-FPM y Vite.
+[vens] Aplicación: http://localhost:8000
 ```
 
-**¿Qué hace?**
-- `docker-compose build`: Lee el `Dockerfile` y construye la imagen PHP personalizada con todas las extensiones necesarias (pdo_mysql, gd, redis, etc.)
-- `composer create-project laravel/laravel .`: Descarga e instala Laravel 11 en el directorio `./src/` usando Composer dentro del contenedor
+Los arranques siguientes son cuestión de segundos.
 
----
+### Qué hace solo el contenedor al arrancar
 
-### Paso 3 — Copiar variables de entorno
-
-```bash
-# Copiar la plantilla al archivo real
-cp .env.example src/.env
-```
-
-**¿Qué hace?** Crea el archivo `.env` con todas las variables de configuración preconfiguradas para Docker. Este archivo contiene credenciales de base de datos, configuración de Redis, etc.
-
-> ⚠️ **Importante:** El archivo `.env` nunca se sube al repositorio (está en `.gitignore`). Cada desarrollador debe tener su propio `.env`.
-
----
-
-### Paso 4 — Levantar todos los servicios
-
-```bash
-# Opción A: Con Make (recomendado)
-make up
-
-# Opción B: Comando directo
-docker-compose up -d
-```
-
-**¿Qué hace?**
-- `up`: Inicia los contenedores
-- `-d`: Modo "detached" (background), la terminal queda libre
-
-Docker iniciará 5 contenedores:
-1. `vens_app` — PHP 8.3 FPM con Laravel
-2. `vens_nginx` — Servidor web
-3. `vens_mysql` — Base de datos
-4. `vens_redis` — Caché y colas
-5. `vens_phpmyadmin` — Administrador de BD
-
-```bash
-# Verificar que todos los contenedores están corriendo:
-docker-compose ps
-# o:
-make ps
-```
-
----
-
-### Paso 5 — Generar la clave de la aplicación
-
-```bash
-# Opción A: Con Make
-make key-generate
-
-# Opción B: Comando directo
-docker-compose exec app php artisan key:generate
-```
-
-**¿Qué hace?** Genera una clave aleatoria de 32 caracteres en base64 y la escribe en `APP_KEY` del archivo `.env`. Esta clave cifra las sesiones, cookies y datos sensibles de Laravel.
-
-> ⚠️ **Nunca compartir esta clave.** Si se expone, cambiarla inmediatamente con este mismo comando.
-
----
-
-### Paso 6 — Ejecutar las migraciones
-
-```bash
-# Opción A: Con Make
-make migrate
-
-# Opción B: Comando directo
-docker-compose exec app php artisan migrate
-```
-
-**¿Qué hace?** Lee todos los archivos en `src/database/migrations/` y ejecuta los que aún no se han aplicado. Esto crea todas las tablas de la base de datos (users, personal_access_tokens, etc.) en MySQL.
-
-```bash
-# Ver el estado de las migraciones:
-docker-compose exec app php artisan migrate:status
-```
-
----
-
-### Paso 7 — Crear symlink de storage
-
-```bash
-# Opción A: Con Make
-make storage-link
-
-# Opción B: Comando directo
-docker-compose exec app php artisan storage:link
-```
-
-**¿Qué hace?** Crea un enlace simbólico desde `public/storage` hacia `storage/app/public`. Esto permite acceder a los archivos subidos (fotos de pacientes, documentos clínicos) via URL pública.
-
----
-
-### ✅ Verificación Final
-
-Si todo salió bien, deberías ver:
-
-| URL | Descripción |
+| | Equivalente manual |
 |---|---|
-| `http://localhost:8000` | API Laravel (página de bienvenida) |
-| `http://localhost:8080` | phpMyAdmin (administrador de BD) |
+| Copia `src/.env.example` a `src/.env` si falta | `cp src/.env.example src/.env` |
+| Instala las dependencias de PHP si falta `vendor/` | `make composer-install` |
+| Genera `APP_KEY` si no hay una | `make key-generate` |
+| Instala las dependencias del frontend si falta `node_modules/` | `npm install` |
+
+Lo único que queda por hacer a mano la primera vez es preparar la base de datos:
 
 ```bash
-# Verificar que Laravel responde:
-curl http://localhost:8000
-
-# Verificar conexión a la BD:
-docker-compose exec app php artisan tinker
-# Dentro de Tinker:
-# >>> DB::connection()->getPdo()
+make migrate       # Crear las tablas
+make seed          # Datos de prueba (opcional)
+make storage-link  # Enlace para los archivos subidos
 ```
+
+### Verificación
+
+```bash
+make ps            # Los 4 contenedores levantados
+```
+
+| Dirección | Qué es |
+|---|---|
+| http://localhost:8000 | La aplicación (pantalla de inicio de sesión) |
+| http://localhost:8000/api/v1 | La API |
+| http://localhost:8000/up | Salud de Laravel |
+| http://localhost:8080 | phpMyAdmin |
+
+> **El puerto 5173 ya no se usa.** Vite sigue corriendo, pero solo dentro del
+> contenedor: Nginx le pasa las peticiones desde el 8000. Si tenías el
+> `:5173` guardado en el navegador, cámbialo por `:8000`.
 
 ---
 
@@ -267,8 +211,26 @@ docker-compose exec app php artisan tinker
 | `make build` | Reconstruir imágenes | Después de cambiar Dockerfile |
 | `make ps` | Ver estado de contenedores | Diagnóstico |
 | `make logs` | Logs en tiempo real | Diagnóstico |
-| `make logs-app` | Logs solo de PHP/Laravel | Diagnóstico de errores PHP |
+| `make logs-app` | Logs de la aplicación (Nginx + PHP + Vite) | Diagnóstico |
+| `make logs-vite` | Solo los logs de Vite | Diagnóstico del frontend |
 | `make clean` | Eliminar todo (⚠ datos incluidos) | Reset completo |
+
+### Comandos del Frontend
+
+El frontend corre dentro de `vens_app`, en `/app`.
+
+| Comando | Descripción |
+|---|---|
+| `make npm cmd="install axios"` | Instalar un paquete |
+| `make npm cmd="run lint"` | Pasar el linter (oxlint) |
+| `make restart-vite` | Reiniciar solo Vite, sin tocar el resto |
+
+Tras instalar un paquete hay que reiniciar Vite para que lo detecte:
+
+```bash
+make npm cmd="install date-fns"
+make restart-vite
+```
 
 ### Comandos Laravel
 
@@ -322,6 +284,15 @@ docker-compose logs -f --tail=100 app
 
 # ── Copiar archivo del contenedor a tu máquina ───────────────────────────────
 docker cp vens_app:/var/www/html/storage/logs/laravel.log ./laravel.log
+
+# ── Comandos npm del frontend (vive en /app del mismo contenedor) ────────────
+docker-compose exec -u www-data -w /app app npm install
+docker-compose exec -u www-data -w /app app npm run lint
+
+# ── Ver o reiniciar los procesos internos del contenedor ─────────────────────
+docker-compose exec app supervisorctl status
+docker-compose exec app supervisorctl restart vite
+docker-compose exec app supervisorctl restart php-fpm
 ```
 
 ---
@@ -366,13 +337,25 @@ src/
 ## 📁 Estructura del Proyecto
 
 ```
-Backend-Vens/
+Proyecto de Graduación 2/
+├── Frontend-Vens/              # ← Repositorio del frontend (React + Vite)
+│   └── src/                    #   Se monta en /app dentro de vens_app
+└── Backend-Vens/               # ← Aquí se ejecutan todos los comandos
 ├── docker/                     # Configuración Docker
+│   ├── dev/                    # Imagen ÚNICA de desarrollo
+│   │   ├── Dockerfile          #   PHP + Node + Nginx + Supervisor
+│   │   ├── nginx.conf          #   /api → PHP, el resto → Vite (proxy)
+│   │   ├── supervisord.conf    #   Los 3 procesos del contenedor
+│   │   └── entrypoint.sh       #   Instala dependencias en el 1er arranque
+│   ├── prod/                   # Imagen ÚNICA de producción
+│   │   ├── Dockerfile          #   Compila la SPA y la mete en la imagen
+│   │   ├── Dockerfile.dockerignore
+│   │   ├── nginx.conf          #   /api → PHP, el resto → archivos estáticos
+│   │   ├── php.ini             #   PHP en modo producción
+│   │   ├── supervisord.conf
+│   │   └── entrypoint.sh       #   Migra y cachea en cada arranque
 │   ├── php/
-│   │   ├── Dockerfile          # Imagen PHP 8.3 personalizada
-│   │   └── php.ini             # Configuración PHP
-│   ├── nginx/
-│   │   └── default.conf        # Configuración del servidor web
+│   │   └── php.ini             # Configuración PHP (compartida)
 │   └── mysql/
 │       └── init/
 │           └── 01_init.sql     # Script SQL inicial
@@ -394,11 +377,17 @@ Backend-Vens/
 │   ├── config/                 # Configuración de Laravel
 │   ├── storage/                # Archivos, logs, caché
 │   └── .env                    # Variables de entorno (NO commitear)
-├── docker-compose.yml          # Orquestación de servicios
+├── docker-compose.yml          # Desarrollo: 4 contenedores
+├── docker-compose.prod.yml     # Producción: 3 contenedores
 ├── .env.example                # Plantilla de variables (SÍ commitear)
+├── .env.prod.example           # Plantilla de producción (SÍ commitear)
+├── .env.prod                   # Configuración real de producción (NO commitear)
 ├── Makefile                    # Comandos abreviados
 └── README.md                   # Este archivo
 ```
+
+> `docker/php/Dockerfile` y `docker/nginx/` desaparecieron: sus dos servicios
+> (PHP-FPM y Nginx) ahora viven dentro de la imagen única de `docker/dev/`.
 
 ---
 
@@ -488,7 +477,10 @@ Por seguridad, el paso 1 **siempre** responde `200` con el mismo mensaje, exista
 ```env
 # URL del frontend: se usa para armar el enlace del correo
 # Resultado: FRONTEND_URL/restablecer-contrasena?token=...&email=...
-FRONTEND_URL=http://localhost:5173
+#
+# Con el contenedor unificado, el frontend se sirve desde el mismo puerto que
+# la API, así que es la misma dirección que APP_URL.
+FRONTEND_URL=http://localhost:8000
 ```
 
 ### Probar el flujo
@@ -550,6 +542,150 @@ MAIL_FROM_ADDRESS="noreply@vens-flebologia.com"
 ```
 
 > ⚠️ Nunca subir credenciales de correo al repositorio: `src/.env` está en `.gitignore` y los valores de ejemplo van solo en `.env.example`.
+
+---
+
+## 🚢 Despliegue a Producción
+
+En desarrollo son **4 contenedores**. En producción son **3**: desaparece
+phpMyAdmin, y la diferencia de fondo es que Vite ya no corre — `npm run build`
+convierte el frontend en archivos estáticos que quedan dentro de la imagen y
+los sirve el mismo Nginx que atiende la API.
+
+### La imagen unificada
+
+```
+┌──────────────────────────────────────────────────────────────────┐
+│              Docker Network: vens_prod_network                   │
+│                                                                  │
+│                        Navegador  │ HTTPS                        │
+│                                   ▼                              │
+│  ┌────────────────────────────────────────────────────────────┐ │
+│  │  vens_prod_app — UN SOLO CONTENEDOR                        │ │
+│  │  ┌──────────────────────────────────────────────────────┐  │ │
+│  │  │  Supervisor (proceso principal)                      │  │ │
+│  │  │    ├── Nginx  :80                                    │  │ │
+│  │  │    │     /            → SPA de React compilada       │  │ │
+│  │  │    │     /api/*       → PHP-FPM                      │  │ │
+│  │  │    │     /storage/*   → archivos subidos             │  │ │
+│  │  │    │     /img/*       → isotipo, plantilla de mapeo  │  │ │
+│  │  │    └── PHP-FPM  127.0.0.1:9000  (Laravel 13)         │  │ │
+│  │  └──────────────────────────────────────────────────────┘  │ │
+│  └──────────────┬──────────────────────┬──────────────────────┘ │
+│                 │ SQL :3306            │ Redis :6379             │
+│                 ▼                      ▼                         │
+│      ┌───────────────────┐  ┌──────────────────────┐            │
+│      │  vens_prod_mysql  │  │  vens_prod_redis      │            │
+│      │  (sin puerto      │  │  (sin puerto          │            │
+│      │   publicado)      │  │   publicado)          │            │
+│      └───────────────────┘  └──────────────────────┘            │
+└──────────────────────────────────────────────────────────────────┘
+```
+
+La ventaja de tener el frontend y la API detrás del mismo Nginx no es solo
+tener menos contenedores: al compartir dominio **desaparece el CORS**, hace
+falta **un solo certificado TLS** y el frontend puede llamar a la API con una
+ruta relativa (`/api/v1`), así que la misma imagen sirve en `localhost`, en un
+dominio de pruebas y en el definitivo sin reconstruirse.
+
+### Archivos que intervienen
+
+| Archivo | Para qué |
+|---|---|
+| `docker/prod/Dockerfile` | Construye la imagen en 4 etapas: compila la SPA, prepara PHP con sus extensiones, instala Composer sin dependencias de desarrollo y arma la imagen final. |
+| `docker/prod/Dockerfile.dockerignore` | Evita mandar `node_modules/`, `vendor/` y los `.env` locales al build. |
+| `docker/prod/nginx.conf` | El reparto entre la SPA y Laravel dentro del contenedor. |
+| `docker/prod/php.ini` | PHP en modo producción: sin mostrar errores y con OPcache sin revalidar archivos. |
+| `docker/prod/supervisord.conf` | Mantiene vivos a Nginx y PHP-FPM (y, cuando haga falta, al worker de colas). |
+| `docker/prod/entrypoint.sh` | En cada arranque: espera a MySQL, migra, enlaza `storage` y cachea configuración, rutas y vistas. |
+| `docker-compose.prod.yml` | Los tres servicios de producción. |
+| `.env.prod.example` | Plantilla de configuración; se copia a `.env.prod`, que **no se versiona**. |
+
+> **El contexto de build es la carpeta padre.** La imagen necesita el código de
+> los dos repositorios, así que se construye desde la carpeta que contiene
+> tanto `Backend-Vens/` como `Frontend-Vens/`. Los targets del Makefile ya lo
+> hacen; a mano sería
+> `docker build -f Backend-Vens/docker/prod/Dockerfile -t vens-app .`
+
+### Desplegar por primera vez
+
+```bash
+# 1. Configuración
+cp .env.prod.example .env.prod
+
+# 2. Construir la imagen (tarda varios minutos la primera vez)
+make prod-build
+
+# 3. Generar la clave de cifrado y pegarla en APP_KEY de .env.prod
+make prod-key
+
+# 4. Editar .env.prod: APP_URL con el dominio real y las contraseñas
+#    de DB_PASSWORD, DB_ROOT_PASSWORD y REDIS_PASSWORD
+
+# 5. Levantar
+make prod-up
+
+# 6. Seguir el arranque (migraciones, cachés, Nginx y PHP-FPM)
+make prod-logs
+```
+
+Las migraciones se aplican solas en cada arranque, así que no hay un paso
+manual equivalente a `make migrate`.
+
+### Comandos
+
+| Comando | Qué hace |
+|---|---|
+| `make prod-build` | Construye la imagen unificada |
+| `make prod-up` | Levanta los tres contenedores |
+| `make prod-down` | Los detiene (los datos se conservan) |
+| `make prod-logs` | Logs de Nginx, PHP-FPM y Laravel juntos |
+| `make prod-ps` | Estado de los contenedores |
+| `make prod-shell` | Terminal dentro del contenedor de la aplicación |
+| `make prod-key` | Genera una `APP_KEY` |
+
+### Actualizar una versión desplegada
+
+El código vive **dentro** de la imagen: no hay volúmenes de código como en
+desarrollo, así que editar archivos en el servidor no cambia nada.
+
+```bash
+git pull                # en los dos repositorios
+make prod-build
+make prod-up            # recrea el contenedor con la imagen nueva
+```
+
+Lo único que sobrevive es el volumen `vens_prod_storage`, donde quedan los
+archivos que sube el usuario (el logo del membrete).
+
+> **Producción y desarrollo no se pisan.** El Compose de producción declara su
+> propio nombre de proyecto (`vens-prod`), sus propios nombres de contenedor
+> (`vens_prod_app`, `vens_prod_mysql`, `vens_prod_redis`), su propia red y sus
+> propios volúmenes. Se pueden tener los dos entornos levantados a la vez —
+> ojo solo con `APP_PORT`, que por defecto es 80 y hay que cambiarlo si esa
+> máquina ya tiene algo escuchando ahí.
+
+### Diferencias respecto de desarrollo
+
+| | Desarrollo | Producción |
+|---|---|---|
+| Contenedores | 4 | 3 |
+| Frontend | Vite dentro de `vens_app`, con recarga en caliente | Compilado dentro de la imagen |
+| Nginx | Proxy hacia Vite | Sirve los archivos compilados |
+| CORS | No hace falta (mismo puerto) | No hace falta (mismo dominio) |
+| Código | Montado por volumen, se edita en vivo | Dentro de la imagen |
+| phpMyAdmin | Sí, en `:8080` | No se despliega |
+| MySQL y Redis | Con puerto publicado al host | Solo en la red interna |
+| `APP_DEBUG` | `true` | `false` |
+| Errores de PHP | Se muestran | Solo al log |
+
+### Falta para un servidor público
+
+El contenedor escucha en HTTP por el puerto 80. Para exponerlo a internet
+todavía hay que ponerle delante **HTTPS**, con Caddy o Traefik (que gestionan
+el certificado de Let's Encrypt solos) o con el Nginx del propio servidor más
+Certbot. La configuración ya deja pasar `/.well-known/`, que es la ruta con la
+que Let's Encrypt valida el dominio.
 
 ---
 

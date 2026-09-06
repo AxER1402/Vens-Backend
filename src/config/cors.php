@@ -16,7 +16,26 @@ return [
 
     'allowed_methods' => ['*'],
 
-    'allowed_origins' => ['*'],
+    // Nunca '*'. Con supports_credentials en true, un comodín hace que
+    // Laravel devuelva como permitido el Origin de quien pregunte, sea quien
+    // sea: cualquier página web podría llamar a esta API en nombre de un
+    // usuario con la sesión abierta. En un sistema de historias clínicas eso
+    // no es aceptable.
+    //
+    // El valor por defecto es FRONTEND_URL, que es el único origen que
+    // legítimamente consume esta API:
+    //   - En desarrollo, http://localhost:5173 (el servidor de Vite).
+    //   - En producción con la imagen unificada, el mismo dominio de la
+    //     aplicación, así que ya no hay peticiones entre orígenes que valga
+    //     la pena permitir y esta lista deja de usarse.
+    //
+    // CORS_ALLOWED_ORIGINS solo hace falta el día que otro cliente, alojado
+    // en otro dominio, tenga que consumir la API. Se listan separados por
+    // comas y sin barra final.
+    'allowed_origins' => array_values(array_filter(array_map(
+        'trim',
+        explode(',', (string) env('CORS_ALLOWED_ORIGINS', (string) env('FRONTEND_URL', '')))
+    ))),
 
     'allowed_origins_patterns' => [],
 
