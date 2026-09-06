@@ -1,0 +1,184 @@
+# =============================================================================
+# docker-compose.prod.yml — Despliegue de PRODUCCIÓN
+# Centro Médico de Flebología — Vens
+# =============================================================================
+# Tres contenedores, no seis:
+#
+#   app    → Nginx + PHP-FPM + la SPA compilada + Laravel   (imagen unificada)
+#   mysql  → base de datos
+#   redis  → caché, sesiones y colas
+#
+# Diferencias con docker-compose.yml (desarrollo):
+#   - El frontend ya no es un contenedor: se compila dentro de la imagen y
+#     queda como archivos estáticos que sirve el mismo Nginx.
+#   - No hay phpMyAdmin.
+#   - MySQL y Redis NO publican puertos al host: solo se llega a ellos desde
+#     la red interna. Si hace falta entrar a la base de datos, se hace con
+#     un túnel SSH, no abriendo el 3306 a internet.
+#   - No se montan volúmenes de código: el código va dentro de la imagen.
+#     Para desplegar un cambio se reconstruye la imagen, no se edita en vivo.
+#
+# Uso:
+#   cp .env.prod.example .env.prod        # y editarlo
+#   make prod-build
+#   make prod-up
+#   make prod-logs
+#
+# Los targets del Makefile son un atajo de:
+#   docker compose --env-file .env.prod -f docker-compose.prod.yml <comando>
+#
+# El --env-file es obligatorio y no opcional: sin él, Compose no encuentra las
+# variables que este archivo interpola (${DB_PASSWORD} y compañía), porque
+# "env_file:" solo alimenta el interior de los contenedores, no a Compose.
+# =============================================================================
+
+# Nombre del proyecto de Compose. Es imprescindible que sea distinto al de
+# desarrollo (que Compose deduce del nombre de la carpeta, "backend-vens"):
+# si los dos compartieran nombre, levantar producción daría de baja el entorno
+# de desarrollo y viceversa, porque Compose creería que son el mismo despliegue.
+name: vens-prod
+
+services:
+
+  # ────────────────────────────────────────────────────────────────────────────
+  # SERVICIO: app — la aplicación completa
+  # ────────────────────────────────────────────────────────────────────────────
+  app:
+    build:
+      # El contexto es la carpeta PADRE porque la imagen necesita el código de
+      # los dos repositorios: Backend-Vens/ y Frontend-Vens/.
+      context: ..
+      dockerfile: Backend-Vens/docker/prod/Dockerfile
+      args:
+        # Ruta relativa: el navegador la resuelve contra el dominio desde el
+        # que cargó la página, así que la misma imagen sirve para cualquier
+        # dominio sin reconstruirse.
+        VITE_API_BASE_URL: /api/v1
+
+    image: vens-app:latest
+    container_name: vens_prod_app
+
+    ports:
+      # En un servidor con dominio propio esto es "80:80", y delante se pone
+      # un proxy con TLS (Caddy, Traefik o Nginx del host con Certbot).
+      - "${APP_PORT:-80}:80"
+
+    # Valores de configuración. Todo lo que no sea específico de Docker vive
+    # en .env.prod, que no se versiona.
+    env_file:
+      - .env.prod
+
+    environment:
+      # Estos se fijan aquí, no en .env.prod, porque son nombres de servicio
+      # de esta red de Docker y no tiene sentido que se editen a mano.
+      DB_HOST: mysql
+      DB_PORT: 3306
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+
+      # Los logs de Laravel salen por la salida estándar del contenedor, que
+      # es donde Docker los recoge: docker compose logs -f app
+      LOG_CHANNEL: stderr
+
+      # Ya no hay dos orígenes: el frontend se sirve desde este mismo Nginx.
+      FRONTEND_URL: ${APP_URL}
+
+    volumes:
+      # Lo único que el contenedor escribe y debe sobrevivir a un redespliegue:
+      # los archivos que sube el usuario (el logo del membrete). Todo lo demás
+      # —código, dependencias, SPA— vive dentro de la imagen y se reemplaza.
+      - storage_publico:/var/www/html/storage/app/public
+
+    restart: unless-stopped
+
+    networks:
+      - vens_network
+
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  # ────────────────────────────────────────────────────────────────────────────
+  # SERVICIO: mysql
+  # ────────────────────────────────────────────────────────────────────────────
+  mysql:
+    image: mysql:8.0
+    container_name: vens_prod_mysql
+
+    # Sin "ports": la base de datos no se expone fuera de la red de Docker.
+
+    environment:
+      MYSQL_ROOT_PASSWORD: ${DB_ROOT_PASSWORD:?Defina DB_ROOT_PASSWORD en .env.prod}
+      MYSQL_DATABASE: ${DB_DATABASE:?Defina DB_DATABASE en .env.prod}
+      MYSQL_USER: ${DB_USERNAME:?Defina DB_USERNAME en .env.prod}
+      MYSQL_PASSWORD: ${DB_PASSWORD:?Defina DB_PASSWORD en .env.prod}
+      TZ: America/Guatemala
+
+    command: >
+      --character-set-server=utf8mb4
+      --collation-server=utf8mb4_unicode_ci
+      --default-authentication-plugin=mysql_native_password
+      --sql-mode=STRICT_TRANS_TABLES,NO_ZERO_DATE,NO_ZERO_IN_DATE,ERROR_FOR_DIVISION_BY_ZERO
+
+    volumes:
+      - mysql_data:/var/lib/mysql
+
+    restart: unless-stopped
+
+    networks:
+      - vens_network
+
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-p${DB_ROOT_PASSWORD}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+  # ────────────────────────────────────────────────────────────────────────────
+  # SERVICIO: redis
+  # ────────────────────────────────────────────────────────────────────────────
+  redis:
+    image: redis:7.2-alpine
+    container_name: vens_prod_redis
+
+    # Sin "ports", por lo mismo que MySQL.
+
+    command: redis-server --appendonly yes --requirepass ${REDIS_PASSWORD:?Defina REDIS_PASSWORD en .env.prod}
+
+    volumes:
+      - redis_data:/data
+
+    restart: unless-stopped
+
+    networks:
+      - vens_network
+
+    # El healthcheck es lo que permite que "app" espere a Redis de verdad y no
+    # solo a que el contenedor exista: las sesiones dependen de él.
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD}", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+# =============================================================================
+# VOLÚMENES
+# Nombres distintos a los de desarrollo, para no mezclar por accidente los
+# datos de prueba con los reales.
+# =============================================================================
+volumes:
+  mysql_data:
+    name: vens_prod_mysql_data
+  redis_data:
+    name: vens_prod_redis_data
+  storage_publico:
+    name: vens_prod_storage
+
+networks:
+  vens_network:
+    name: vens_prod_network
+    driver: bridge

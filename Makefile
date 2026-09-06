@@ -22,6 +22,11 @@ PHP_SERVICE = app
 # Binario de Docker Compose (compatible con v1 y v2)
 COMPOSE = docker-compose
 
+# Compose de producción: imagen unificada (Frontend + Backend en un contenedor).
+# El --env-file es obligatorio: sin él, Compose no puede resolver las variables
+# que docker-compose.prod.yml interpola (contraseñas de MySQL y Redis).
+COMPOSE_PROD = docker compose --env-file .env.prod -f docker-compose.prod.yml
+
 # Colores para output legible en terminal
 GREEN  = \033[0;32m
 YELLOW = \033[1;33m
@@ -32,7 +37,8 @@ NC     = \033[0m # Sin color
 # .PHONY indica que estos no son archivos reales, son comandos
 .PHONY: help up down restart build shell logs ps clean migrate \
         migrate-fresh seed tinker test cache-clear key-generate \
-        composer-install artisan queue-work
+        composer-install artisan queue-work logs-vite npm restart-vite \
+        prod-build prod-up prod-down prod-logs prod-shell prod-ps prod-key
 
 # ── Ayuda ─────────────────────────────────────────────────────────────────────
 # Ejecutar solo "make" muestra esta ayuda
@@ -49,9 +55,11 @@ help:
 	@echo "  $(GREEN)make build$(NC)           Reconstruir imágenes Docker"
 	@echo "  $(GREEN)make ps$(NC)              Ver estado de los contenedores"
 	@echo "  $(GREEN)make logs$(NC)            Ver logs en tiempo real (todos)"
-	@echo "  $(GREEN)make logs-app$(NC)        Ver logs del contenedor PHP"
-	@echo "  $(GREEN)make logs-nginx$(NC)      Ver logs de Nginx"
+	@echo "  $(GREEN)make logs-app$(NC)        Ver logs de la aplicación (Nginx + PHP + Vite)"
+	@echo "  $(GREEN)make logs-vite$(NC)       Ver solo los logs de Vite (frontend)"
 	@echo "  $(GREEN)make logs-mysql$(NC)      Ver logs de MySQL"
+	@echo "  $(GREEN)make npm cmd=<cmd>$(NC)   Ejecutar npm en el frontend"
+	@echo "  $(GREEN)make restart-vite$(NC)    Reiniciar solo el servidor de Vite"
 	@echo ""
 	@echo "$(YELLOW)── LARAVEL / ARTISAN ───────────────────────────────────────────$(NC)"
 	@echo "  $(GREEN)make shell$(NC)           Abrir terminal en el contenedor PHP"
@@ -90,8 +98,12 @@ up:
 	$(COMPOSE) up -d --remove-orphans
 	@echo ""
 	@echo "$(GREEN)✔ Servicios activos:$(NC)"
-	@echo "  🌐 API Laravel:   http://localhost:$${NGINX_PORT:-8000}"
+	@echo "  🌐 Aplicación:    http://localhost:$${NGINX_PORT:-8000}"
+	@echo "  🔌 API:           http://localhost:$${NGINX_PORT:-8000}/api/v1"
 	@echo "  🗄  phpMyAdmin:   http://localhost:$${PMA_PORT:-8080}"
+	@echo ""
+	@echo "$(YELLOW)La pantalla y la API salen por el mismo puerto. El 5173 ya no se usa.$(NC)"
+	@echo "$(YELLOW)El primer arranque instala vendor/ y node_modules: make logs-app$(NC)"
 	@echo ""
 
 # Detener y eliminar los contenedores (los volúmenes de datos se conservan)
@@ -127,13 +139,15 @@ ps:
 logs:
 	$(COMPOSE) logs -f
 
-# Logs solo del contenedor PHP/Laravel
+# Logs de la aplicación: Nginx, PHP-FPM y Vite salen mezclados, cada línea
+# con el prefijo del proceso que la escribió.
 logs-app:
 	$(COMPOSE) logs -f $(PHP_SERVICE)
 
-# Logs solo de Nginx
-logs-nginx:
-	$(COMPOSE) logs -f nginx
+# Solo lo que escribe Vite, para cuando el problema es del frontend.
+# Supervisor prefija cada línea con el nombre del proceso que la produjo.
+logs-vite:
+	$(COMPOSE) logs -f $(PHP_SERVICE) | grep --line-buffered -i "vite"
 
 # Logs solo de MySQL
 logs-mysql:
@@ -156,6 +170,21 @@ shell:
 # Comando real: docker-compose exec app php artisan <cmd>
 artisan:
 	$(COMPOSE) exec -u www-data $(PHP_SERVICE) php artisan $(cmd)
+
+# Ejecutar npm en el frontend, que ahora vive en /app dentro del mismo
+# contenedor. Ejemplos:
+#   make npm cmd="install axios"
+#   make npm cmd="run lint"
+#
+# Después de instalar un paquete hay que reiniciar Vite para que lo tome:
+#   make restart-vite
+npm:
+	$(COMPOSE) exec -u www-data -w /app $(PHP_SERVICE) npm $(cmd)
+
+# Reiniciar solo Vite, sin tirar el contenedor entero ni perder la sesión de
+# la base de datos. Útil tras instalar un paquete o tocar vite.config.js.
+restart-vite:
+	$(COMPOSE) exec $(PHP_SERVICE) supervisorctl restart vite
 
 # Generar la clave de cifrado de Laravel (APP_KEY en .env)
 # IMPORTANTE: Ejecutar esto después de copiar .env.example a .env
@@ -300,3 +329,55 @@ install:
 	@echo "$(GREEN)║  🌐 API:        http://localhost:8000    ║$(NC)"
 	@echo "$(GREEN)║  🗄  DB Admin:  http://localhost:8080    ║$(NC)"
 	@echo "$(GREEN)╚══════════════════════════════════════════╝$(NC)"
+
+# =============================================================================
+# PRODUCCIÓN — Imagen unificada (Frontend + Backend en un solo contenedor)
+# =============================================================================
+# Estos targets NO tocan el entorno de desarrollo: usan otro archivo de
+# Compose, otra red y otros volúmenes. Se pueden tener los dos a la vez.
+#
+# Antes de la primera vez:
+#   cp .env.prod.example .env.prod   ← y editarlo con los valores reales
+# =============================================================================
+
+# Construir la imagen unificada.
+# Tarda varios minutos la primera vez: compila las extensiones de PHP,
+# instala las dependencias de Composer y compila la SPA de React.
+prod-build:
+	@test -f .env.prod || { echo "$(RED)✖ Falta .env.prod — cópielo de .env.prod.example$(NC)"; exit 1; }
+	@echo "$(BLUE)Construyendo imagen de producción (Frontend + Backend)...$(NC)"
+	$(COMPOSE_PROD) build
+	@echo "$(GREEN)✔ Imagen construida$(NC)"
+
+# Levantar producción
+prod-up:
+	@test -f .env.prod || { echo "$(RED)✖ Falta .env.prod — cópielo de .env.prod.example$(NC)"; exit 1; }
+	$(COMPOSE_PROD) up -d
+	@echo "$(GREEN)✔ Producción levantada$(NC)"
+	@echo "$(YELLOW)Las migraciones y las cachés se aplican solas al arrancar.$(NC)"
+	@echo "$(YELLOW)Siga el arranque con: make prod-logs$(NC)"
+
+# Detener producción (los volúmenes con los datos se conservan)
+prod-down:
+	$(COMPOSE_PROD) down
+	@echo "$(GREEN)✔ Producción detenida (los datos se conservan)$(NC)"
+
+# Logs de la aplicación (Nginx, PHP-FPM y Laravel salen todos por aquí)
+prod-logs:
+	$(COMPOSE_PROD) logs -f app
+
+# Estado de los tres contenedores
+prod-ps:
+	$(COMPOSE_PROD) ps
+
+# Terminal dentro del contenedor de la aplicación
+prod-shell:
+	$(COMPOSE_PROD) exec app bash
+
+# Generar una APP_KEY para pegar en .env.prod.
+# Se ejecuta con la imagen suelta, sin levantar nada, y saltándose el
+# entrypoint (--entrypoint php): la clave hace falta ANTES del primer
+# arranque, porque el entrypoint se niega a seguir sin ella.
+prod-key:
+	@echo "$(YELLOW)Copie esta línea completa en APP_KEY de .env.prod:$(NC)"
+	@docker run --rm --entrypoint php vens-app:latest artisan key:generate --show

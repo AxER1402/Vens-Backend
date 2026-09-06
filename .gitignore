@@ -1,0 +1,5 @@
+# Configuración real de producción: lleva las contraseñas de la clínica.
+# Lo que sí se versiona es .env.prod.example, con los valores en blanco.
+.env.prod
+
+.DS_Store

@@ -1,0 +1,56 @@
+# =============================================================================
+# Dockerfile.dockerignore — Qué NO se envía al build de la imagen unificada
+# =============================================================================
+# BuildKit busca este archivo junto al Dockerfile (<Dockerfile>.dockerignore)
+# antes que el .dockerignore de la raíz del contexto. Como el contexto de esta
+# imagen es la carpeta padre —la que contiene los dos repositorios— y esa
+# carpeta no pertenece a ningún repositorio, el archivo vive aquí.
+#
+# Sin esto, el build enviaría node_modules/ y vendor/ enteros al demonio de
+# Docker: cientos de megabytes y varios minutos, para luego descartarlos.
+# =============================================================================
+
+# ── Nunca ────────────────────────────────────────────────────────────────────
+**/.git
+**/.gitignore
+**/.DS_Store
+**/.claude
+**/.idea
+**/.vscode
+
+# ── Dependencias: se instalan dentro de la imagen ────────────────────────────
+**/node_modules
+**/vendor
+
+# ── Artefactos de build previos, para no arrastrar uno viejo ─────────────────
+Frontend-Vens/dist
+
+# ── Entornos locales ─────────────────────────────────────────────────────────
+# Críticos los dos:
+#   - El .env del frontend apunta a http://localhost:8000 y competiría con el
+#     ARG VITE_API_BASE_URL de la etapa de build.
+#   - El .env del backend lleva credenciales de desarrollo que no tienen por
+#     qué quedar dentro de una imagen de producción. En producción los valores
+#     entran como variables de entorno del contenedor.
+Frontend-Vens/.env
+Frontend-Vens/.env.*
+Backend-Vens/src/.env
+Backend-Vens/src/.env.*
+Backend-Vens/.env
+Backend-Vens/.env.prod
+
+# ── Estado local de Laravel ──────────────────────────────────────────────────
+Backend-Vens/src/storage/logs/*
+Backend-Vens/src/storage/framework/cache/*
+Backend-Vens/src/storage/framework/sessions/*
+Backend-Vens/src/storage/framework/views/*
+Backend-Vens/src/bootstrap/cache/*
+Backend-Vens/src/public/storage
+Backend-Vens/src/.phpunit.result.cache
+
+# ── Cosas que no se ejecutan en producción ───────────────────────────────────
+Backend-Vens/src/tests
+Backend-Vens/docker/mysql
+Backend-Vens/docker-compose.yml
+Backend-Vens/Makefile
+**/README.md
