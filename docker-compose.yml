@@ -70,6 +70,13 @@ services:
       # vendor/ en un volumen con nombre: dentro de un directorio montado
       # desde el Mac, Composer y el autoloader van muy lentos.
       - vendor_data:/var/www/html/vendor
+      # La plantilla de configuración del proyecto, que vive fuera de src/.
+      # El entrypoint la usa para crear src/.env en el primer arranque.
+      #
+      # Se monta en /opt/vens y no dentro de /var/www/html porque ese
+      # directorio ya es un bind mount de ./src: Docker no puede crear un
+      # punto de montaje dentro de otro montaje del host.
+      - ./.env.example:/opt/vens/env.example:ro
 
       # ── Frontend ──
       # Código de React, que vive en el repositorio de al lado.

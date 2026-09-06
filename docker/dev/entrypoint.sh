@@ -19,10 +19,20 @@ como_www() {
 echo "[vens] ──────────────────────────────────────────────"
 
 # ── Laravel: .env ────────────────────────────────────────────────────────────
+# Se copia de la plantilla del PROYECTO, que vive en la raíz del repositorio y
+# docker-compose.yml monta aquí. Ojo con no confundirla con src/.env.example,
+# que es la de fábrica de Laravel: esa trae SQLite, sesiones en base de datos
+# y el correo al log, y con ella la aplicación no arranca contra este Docker.
 if [ ! -f /var/www/html/.env ]; then
-    echo "[vens] No hay src/.env, se copia de src/.env.example"
-    cp /var/www/html/.env.example /var/www/html/.env
-    chown www-data:www-data /var/www/html/.env
+    if [ -f /opt/vens/env.example ]; then
+        echo "[vens] No hay src/.env, se copia de la plantilla del proyecto"
+        cp /opt/vens/env.example /var/www/html/.env
+        chown www-data:www-data /var/www/html/.env
+    else
+        echo "[vens] ERROR: falta src/.env y no encuentro la plantilla."
+        echo "[vens] Ejecute desde Backend-Vens:  cp .env.example src/.env"
+        exit 1
+    fi
 fi
 
 # ── Laravel: directorios de escritura ────────────────────────────────────────
