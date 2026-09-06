@@ -7,13 +7,13 @@ use App\Http\Requests\Auth\ForgotPasswordRequest;
 use App\Http\Requests\Auth\LoginRequest;
 use App\Http\Requests\Auth\ResetPasswordRequest;
 use App\Models\User;
+use App\Support\Sesion\VencimientoDeSesion;
 use Illuminate\Auth\Events\PasswordReset;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Password;
 use Illuminate\Support\Str;
-use Laravel\Sanctum\PersonalAccessToken;
 
 class AuthController extends Controller
 {
@@ -38,12 +38,19 @@ class AuthController extends Controller
             ], 403);
         }
 
-        // Crear token API con Sanctum. La duración de la sesión la fija
-        // config/sanctum.php ('expiration'), una hora contada desde este
-        // momento, y se le informa al cliente para que pueda cerrar la sesión
-        // en la interfaz apenas se cumpla el plazo.
+        // Las sesiones que este usuario dejó morir por inactividad ya no
+        // autentican, pero su fila sigue ocupando espacio. Se limpian al entrar
+        // porque no hay tareas programadas en el proyecto y este es el único
+        // momento en que se sabe, sin buscarlo, que hay algo que barrer.
+        $this->olvidarSesionesVencidas($user);
+
+        // Crear token API con Sanctum. La sesión dura mientras se use: el plazo
+        // que fija config/sanctum.php ('inactividad') se cuenta desde la última
+        // petición, no desde este momento. Se le informa al cliente para que
+        // muestre la cuenta atrás; las respuestas siguientes la corrigen con las
+        // cabeceras X-Session-Expires-*.
         $tokenNuevo = $user->createToken('auth_token');
-        $expiracion = $this->expiracionDelToken($tokenNuevo->accessToken);
+        $expiracion = VencimientoDeSesion::paraToken($tokenNuevo->accessToken);
 
         return response()->json([
             'success' => true,
@@ -158,7 +165,7 @@ class AuthController extends Controller
     public function me(Request $request): JsonResponse
     {
         $user = $request->user();
-        $expiracion = $this->expiracionDelToken($user->currentAccessToken());
+        $expiracion = VencimientoDeSesion::paraToken($user->currentAccessToken());
 
         return response()->json([
             'success' => true,
@@ -179,31 +186,21 @@ class AuthController extends Controller
     }
 
     /**
-     * Calcular cuánto le queda de vida al token con el que se hizo la petición.
-     *
-     * Sanctum no guarda la fecha de vencimiento en la base de datos cuando la
-     * duración se define por configuración: la calcula sobre la fecha de
-     * creación del token. Aquí se hace la misma cuenta para poder devolverla.
-     *
-     * @return array{expires_in: int|null, expires_at: string|null}
+     * Borrar los tokens de este usuario que ya no autentican por inactividad.
      */
-    private function expiracionDelToken(mixed $token): array
+    private function olvidarSesionesVencidas(User $user): void
     {
-        $minutos = (int) config('sanctum.expiration');
+        $minutos = VencimientoDeSesion::minutos();
 
-        // Las sesiones de primera parte (cookie) no llevan token personal y
-        // tampoco vencen por esta vía.
-        if ($minutos <= 0 || ! $token instanceof PersonalAccessToken) {
-            return ['expires_in' => null, 'expires_at' => null];
+        if ($minutos <= 0) {
+            return;
         }
 
-        $vence = $token->created_at->copy()->addMinutes($minutos);
-        // Se trunca hacia abajo para no prometer más tiempo del que queda.
-        $restante = max(0, (int) now()->diffInSeconds($vence, false));
+        $limite = now()->subMinutes($minutos);
 
-        return [
-            'expires_in' => (int) $restante,
-            'expires_at' => $vence->toIso8601String(),
-        ];
+        // Un token sin uso se juzga por su creación, igual que al autenticar.
+        $user->tokens()
+            ->whereRaw('COALESCE(last_used_at, created_at) <= ?', [$limite])
+            ->delete();
     }
 }
