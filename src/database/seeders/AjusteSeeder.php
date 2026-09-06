@@ -22,6 +22,13 @@ class AjusteSeeder extends Seeder
     public function run(): void
     {
         foreach (Ajustes::CAMPOS as $clave => $campo) {
+            // Los ajustes de la agenda no vienen de config/: nacieron en la
+            // base y su valor de fábrica lo pone Ajustes::deFabrica(). Aquí no
+            // hay nada que copiar.
+            if (! isset($campo['config'])) {
+                continue;
+            }
+
             $valor = config($campo['config']);
 
             if ($valor === null || $valor === '') {
