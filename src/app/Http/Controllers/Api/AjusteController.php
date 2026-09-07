@@ -147,6 +147,16 @@ class AjusteController extends Controller
     }
 
     /**
+     * La dirección con la que el navegador ve un archivo de public/.
+     *
+     * @param  string  $relativa  Ruta relativa a public/ ('img/isotipo.png').
+     */
+    private function urlPublica(string $relativa): string
+    {
+        return rtrim((string) config('app.url'), '/').'/'.ltrim($relativa, '/');
+    }
+
+    /**
      * Los ajustes más lo que la pantalla necesita para pintarlos: la URL con
      * la que se ve el logo, que no es la ruta con la que se guarda.
      *
@@ -159,7 +169,14 @@ class AjusteController extends Controller
 
         return [
             'ajustes' => $valores,
-            'logo_url' => $logo ? asset($logo) : null,
+
+            // La dirección se arma con APP_URL y no con asset(), que la deduce
+            // de la petición: Nginx pasa a PHP la cabecera Host por su variable
+            // $host, que descarta el puerto, así que el logo salía en
+            // http://localhost/img/… —el puerto 80, donde no atiende nadie— y
+            // la pantalla lo pintaba roto. Es la misma dirección con la que el
+            // disco 'public' arma la de la foto de perfil, que sí se ve.
+            'logo_url' => $logo ? $this->urlPublica($logo) : null,
 
             // El horario se devuelve ya con los siete días aunque nunca se
             // haya guardado: así la pantalla pinta la tabla sin tener que
