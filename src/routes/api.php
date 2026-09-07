@@ -91,6 +91,12 @@ Route::prefix('v1')->group(function () {
             Route::put('/services/{service}', [ServiceController::class, 'update']);
             Route::patch('/services/{service}', [ServiceController::class, 'update']);
             Route::delete('/services/{service}', [ServiceController::class, 'destroy']);
+
+            // Borrado definitivo. Va en su propia ruta y no como un parámetro
+            // del anterior para que quitar del selector y borrar de la base no
+            // se pidan con la misma llamada: son cosas distintas y una de las
+            // dos no se deshace.
+            Route::delete('/services/{service}/definitivo', [ServiceController::class, 'forceDestroy']);
         });
 
         // Lectura de Pacientes (disponible para personal autorizado)
