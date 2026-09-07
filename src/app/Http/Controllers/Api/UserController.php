@@ -10,7 +10,9 @@ use App\Support\Contacto\Telefono;
 use App\Support\Listados\Pagina;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Storage;
 
 class UserController extends Controller
 {
@@ -176,5 +178,129 @@ class UserController extends Controller
                 'activo' => $user->activo,
             ],
         ], 200);
+    }
+
+    /**
+     * Borrar una cuenta del sistema, sin vuelta atrás.
+     *
+     * Desactivar es lo correcto para quien trabajó aquí: la cuenta deja de
+     * entrar, pero su nombre sigue al pie de lo que firmó. Lo que no resolvía
+     * es la cuenta que nunca llegó a usarse —el correo mal escrito, la que se
+     * creó dos veces, la del turno que no empezó—, que se quedaba en la lista
+     * para siempre ocupando además su correo, que es único.
+     *
+     * Hay tres cosas que no se pueden borrar, y no por precaución sino porque
+     * el sistema quedaría mal:
+     *
+     * 1. Una cuenta con registros a su nombre. Las nueve claves foráneas hacia
+     *    users son ON DELETE SET NULL, así que la base no se queja: lo que pasa
+     *    es peor, que la consulta se queda sin quién la levantó y la factura
+     *    sin quién la emitió. La firma de los informes clínicos sale de ahí
+     *    (ver Ficha::firma), de modo que borrar a un médico dejaría sin firmar
+     *    todo lo que firmó. Para eso está desactivar.
+     * 2. La propia cuenta. Quien borra se quedaría sin sesión a mitad de la
+     *    operación.
+     * 3. El último administrador activo. Sin él nadie puede volver a entrar a
+     *    la gestión de usuarios, ni siquiera para deshacerlo.
+     */
+    public function forceDestroy(Request $request, User $user): JsonResponse
+    {
+        if ($request->user()->id === $user->id) {
+            return response()->json([
+                'success' => false,
+                'message' => 'No puede eliminar su propia cuenta. Pídaselo a otro administrador.',
+            ], 422);
+        }
+
+        $registros = $this->registrosDe($user);
+
+        if (array_sum($registros) > 0) {
+            return response()->json([
+                'success' => false,
+                'message' => 'No se puede eliminar a '.$user->name.': tiene '
+                    .$this->enumerar($registros).' a su nombre, y borrar la cuenta los dejaría '
+                    .'sin quién los registró. Desactívelo: deja de entrar al sistema y su nombre '
+                    .'sigue en lo que firmó.',
+                'data' => ['registros' => $registros],
+            ], 409);
+        }
+
+        if ($user->rol === 'administrador' && $user->activo) {
+            $otrosAdmins = User::where('rol', 'administrador')
+                ->where('activo', true)
+                ->where('id', '!=', $user->id)
+                ->count();
+
+            if ($otrosAdmins === 0) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Es el único administrador activo. Sin él nadie podría volver a '
+                        .'entrar a la gestión de usuarios: nombre a otro administrador antes.',
+                ], 422);
+            }
+        }
+
+        // La foto de perfil vive en el disco, no en la fila: borrar solo la
+        // fila dejaría el archivo suelto para siempre.
+        if ($user->foto_path) {
+            Storage::disk('public')->delete($user->foto_path);
+        }
+
+        $user->tokens()->delete();
+        $user->delete();
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Usuario eliminado del sistema.',
+        ], 200);
+    }
+
+    /**
+     * Qué hay registrado a nombre de este usuario, por tipo.
+     *
+     * Se cuentan las dos columnas de autoría donde existen —quién lo levantó y
+     * quién lo corrigió—: cualquiera de las dos hace que la cuenta esté
+     * sujetando un registro.
+     *
+     * @return array<string, int>
+     */
+    private function registrosDe(User $user): array
+    {
+        return [
+            'consultas' => DB::table('clinical_histories')
+                ->where('created_by', $user->id)->orWhere('updated_by', $user->id)->count(),
+            'estudios' => DB::table('doppler_reports')
+                ->where('created_by', $user->id)->orWhere('updated_by', $user->id)->count(),
+            'documentos de cobro' => DB::table('invoices')
+                ->where('created_by', $user->id)->count(),
+            'citas' => DB::table('appointments')
+                ->where('medico_id', $user->id)->orWhere('created_by', $user->id)->count(),
+            'días bloqueados' => DB::table('blocked_days')
+                ->where('created_by', $user->id)->count(),
+        ];
+    }
+
+    /**
+     * «4 consultas, 3 documentos de cobro y 1 cita».
+     *
+     * @param  array<string, int>  $registros
+     */
+    private function enumerar(array $registros): string
+    {
+        $partes = [];
+
+        foreach ($registros as $nombre => $cuantos) {
+            if ($cuantos > 0) {
+                $partes[] = $cuantos.' '.$nombre;
+            }
+        }
+
+        if (count($partes) === 1) {
+            return $partes[0];
+        }
+
+        $ultima = array_pop($partes);
+
+        return implode(', ', $partes).' y '.$ultima;
     }
 }
