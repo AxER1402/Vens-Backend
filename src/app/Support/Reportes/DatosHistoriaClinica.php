@@ -97,8 +97,7 @@ class DatosHistoriaClinica
     {
         $campos = [
             'Consulta por' => Formato::valor($this->historia->consulta_por),
-            'Zonas de la pierna' => Formato::lista($this->seleccion('zonas_pierna')),
-            'Otra zona' => Formato::valor($this->historia->zonas_pierna_otro),
+            'Zonas de la pierna' => Formato::lista($this->zonasConMolestias()),
             'Síntomas' => Formato::lista($this->seleccion('sintomas')),
             'Los síntomas aumentan con' => Formato::lista($this->seleccion('sintomas_aumentan')),
             'Los síntomas disminuyen con' => Formato::lista($this->seleccion('sintomas_disminuyen')),
@@ -320,5 +319,28 @@ class DatosHistoriaClinica
         return $this->opcionesDe($categoria)
             ->map(fn ($opcion) => $opcion->etiqueta ?? $opcion->valor)
             ->all();
+    }
+
+    /**
+     * Las zonas marcadas, con la zona escrita en el sitio de 'Otro'.
+     *
+     * Imprimir «Muslo, Otro» y la aclaración en un renglón aparte obliga a
+     * quien lee el informe a juntar las dos cosas, y deja la lista diciendo
+     * literalmente que hay otra zona sin decir cuál. Se sustituye en su sitio:
+     * «Muslo, planta del pie derecho» es la respuesta a la pregunta.
+     *
+     * Si se marcó 'Otro' pero no se escribió nada, se queda 'Otro': es lo que
+     * hay en el expediente y callarlo sería decir menos de lo registrado.
+     *
+     * @return array<int, string>
+     */
+    private function zonasConMolestias(): array
+    {
+        $otra = trim((string) $this->historia->zonas_pierna_otro);
+
+        return array_map(
+            fn (string $zona) => $zona === 'Otro' && $otra !== '' ? $otra : $zona,
+            $this->seleccion('zonas_pierna'),
+        );
     }
 }
