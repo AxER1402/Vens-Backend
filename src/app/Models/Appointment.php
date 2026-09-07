@@ -99,11 +99,18 @@ class Appointment extends Model
     }
 
     /**
-     * Filtrar citas por un rango de fechas.
+     * Filtrar citas por un rango de fechas, con los dos extremos dentro.
+     *
+     * Se compara solo la parte de fecha, como en scopeByDate y por lo mismo:
+     * `fecha_hora_inicio` es un datetime, así que un whereBetween contra la
+     * fecha pelada lee el último día como su medianoche y deja fuera todas las
+     * citas de esa jornada. La vista semanal de la agenda pedía de lunes a
+     * domingo y se quedaba sin el domingo entero.
      */
     public function scopeByDateRange(Builder $query, string $from, string $to): Builder
     {
-        return $query->whereBetween('fecha_hora_inicio', [$from, $to]);
+        return $query->whereDate('fecha_hora_inicio', '>=', $from)
+                     ->whereDate('fecha_hora_inicio', '<=', $to);
     }
 
     /**
