@@ -98,6 +98,7 @@ class DatosHistoriaClinica
         $campos = [
             'Consulta por' => Formato::valor($this->historia->consulta_por),
             'Zonas de la pierna' => Formato::lista($this->seleccion('zonas_pierna')),
+            'Otra zona' => Formato::valor($this->historia->zonas_pierna_otro),
             'Síntomas' => Formato::lista($this->seleccion('sintomas')),
             'Los síntomas aumentan con' => Formato::lista($this->seleccion('sintomas_aumentan')),
             'Los síntomas disminuyen con' => Formato::lista($this->seleccion('sintomas_disminuyen')),

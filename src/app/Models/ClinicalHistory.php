@@ -49,6 +49,7 @@ class ClinicalHistory extends Model
         'hijos_muertos',
         'ultima_menstruacion',
         'hormonas',
+        'zonas_pierna_otro',
         'enfermedades_otros',
         'presion_arterial',
         'frecuencia_cardiaca',
