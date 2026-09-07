@@ -98,4 +98,29 @@ class ServiceController extends Controller
             'data' => $service,
         ], 200);
     }
+
+    /**
+     * Borrar un servicio del catálogo, sin vuelta atrás.
+     *
+     * Retirar deja la fila en la lista, y para un servicio que se prestó de
+     * verdad eso es lo correcto. Pero un catálogo también acumula lo que nunca
+     * llegó a cobrarse: el renglón de prueba, el nombre mal escrito, el
+     * duplicado. Retirarlos no los quita de en medio, solo los manda al filtro
+     * de «Retirados», y encima siguen ocupando el nombre, que es único.
+     *
+     * Se puede borrar de verdad porque el catálogo no sujeta nada: ningún
+     * documento apunta a un servicio. Los renglones de un recibo copian la
+     * descripción y el precio al emitirlo (ver invoice_items), justamente para
+     * que subir una tarifa no reescriba un recibo anterior. Ese mismo desapego
+     * hace que borrar la fila de aquí no le quite una letra a lo ya cobrado.
+     */
+    public function forceDestroy(Service $service): JsonResponse
+    {
+        $service->delete();
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Servicio eliminado del catálogo.',
+        ], 200);
+    }
 }
