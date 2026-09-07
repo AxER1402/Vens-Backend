@@ -80,6 +80,14 @@ Route::prefix('v1')->group(function () {
         Route::apiResource('users', UserController::class)
             ->middleware('role:administrador');
 
+        // Borrado definitivo de una cuenta. En su propia ruta y no como una
+        // bandera del DELETE anterior, igual que en el catálogo de servicios:
+        // desactivar y borrar son cosas distintas y una de las dos no se
+        // deshace. El controlador se niega si la cuenta tiene registros a su
+        // nombre, si es la de quien la pide o si es el último administrador.
+        Route::delete('/users/{user}/definitivo', [UserController::class, 'forceDestroy'])
+            ->middleware('role:administrador');
+
         // Catálogo de servicios y tarifas. Lo lee quien cobra, porque de aquí
         // se llenan los renglones del recibo; lo mantiene el administrador,
         // porque un precio no se corrige desde el mostrador con un paciente
