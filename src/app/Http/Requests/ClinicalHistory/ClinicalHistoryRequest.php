@@ -45,6 +45,7 @@ abstract class ClinicalHistoryRequest extends FormRequest
                 Rule::in(['Estética', 'Enfermedad']),
             ],
             'disminuyen_otros' => ['nullable', 'string', 'max:255'],
+            'zonas_pierna_otro' => ['nullable', 'string', 'max:255'],
 
             // ── Antecedentes ──────────────────────────────────────────────────
             'familiar_varices' => ['nullable', 'boolean'],
