@@ -241,11 +241,16 @@ class IngresosPorPeriodo extends ReportePeriodo
             ];
         }
 
+        // recortar() devuelve las filas y cuántas quedaron fuera. Aquí solo se
+        // usan las filas: el aviso del recorte lo pone el detalle, que es el
+        // listado largo de verdad.
+        [$filas] = $this->recortar($filas);
+
         return [
             'tipo' => 'tabla',
             'titulo' => 'De dónde sale',
             'encabezados' => ['Concepto', 'Cantidad', 'Total cobrado'],
-            'filas' => $this->recortar($filas),
+            'filas' => $filas,
             'anchos' => [55, 18, 27],
         ];
     }
@@ -269,14 +274,13 @@ class IngresosPorPeriodo extends ReportePeriodo
             ];
         }
 
-        $recortadas = $this->recortar($filas);
-        $this->sobran = count($filas) - count($recortadas);
+        [$filas, $this->sobran] = $this->recortar($filas);
 
         return [
             'tipo' => 'tabla',
             'titulo' => 'Detalle de documentos',
             'encabezados' => ['Documento', 'Fecha', 'Paciente', 'Tipo', 'Pago', 'Total'],
-            'filas' => $recortadas,
+            'filas' => $filas,
             'anchos' => [12, 14, 30, 12, 16, 16],
         ];
     }
