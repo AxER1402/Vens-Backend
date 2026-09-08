@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use Carbon\Carbon;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
@@ -101,16 +102,44 @@ class Appointment extends Model
     /**
      * Filtrar citas por un rango de fechas, con los dos extremos dentro.
      *
-     * Se compara solo la parte de fecha, como en scopeByDate y por lo mismo:
-     * `fecha_hora_inicio` es un datetime, así que un whereBetween contra la
-     * fecha pelada lee el último día como su medianoche y deja fuera todas las
-     * citas de esa jornada. La vista semanal de la agenda pedía de lunes a
-     * domingo y se quedaba sin el domingo entero.
+     * `fecha_hora_inicio` es un datetime, así que comparar contra la fecha
+     * pelada lee el último día como su medianoche y deja fuera esa jornada
+     * entera: la vista semanal pedía de lunes a domingo y se quedaba sin el
+     * domingo. El extremo de arriba se estira hasta el final del día.
+     *
+     * Se comparan marcas de tiempo y no DATE(fecha_hora_inicio) para que el
+     * índice siga sirviendo. Envolver la columna en una función obliga a MySQL
+     * a recorrer la tabla entera, y esta crece con cada cita: en una consulta
+     * con ochenta pacientes al día son veinte mil filas al año, y la agenda se
+     * repinta cada vez que alguien cambia de semana.
+     *
+     * Es lo mismo que hace Periodo::limitesHora() para los reportes.
      */
     public function scopeByDateRange(Builder $query, string $from, string $to): Builder
     {
-        return $query->whereDate('fecha_hora_inicio', '>=', $from)
-                     ->whereDate('fecha_hora_inicio', '<=', $to);
+        $desde = self::comoFecha($from)?->startOfDay();
+        $hasta = self::comoFecha($to)?->endOfDay();
+
+        // Una fecha que no se entiende no filtra nada, como antes de que este
+        // scope supiera de horas. Es preferible una lista vacía a un error 500
+        // por un parámetro mal escrito en la dirección.
+        if ($desde === null || $hasta === null) {
+            return $query;
+        }
+
+        return $query
+            ->where('fecha_hora_inicio', '>=', $desde)
+            ->where('fecha_hora_inicio', '<=', $hasta);
+    }
+
+    /** La fecha, o null si el texto no es una. */
+    private static function comoFecha(string $texto): ?Carbon
+    {
+        try {
+            return Carbon::parse($texto);
+        } catch (\Throwable) {
+            return null;
+        }
     }
 
     /**
