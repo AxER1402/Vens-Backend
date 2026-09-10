@@ -12,7 +12,7 @@ use Illuminate\Http\Request;
  * Cada uno se declara **una sola vez**: su clave pública, quién puede emitirlo,
  * qué filtros admite y qué clase lo construye. El controlador no conoce ningún
  * reporte por su nombre y el frontend pinta su catálogo con lo que devuelve
- * `descriptores()`, así que añadir el reporte número once es escribir su clase
+ * `descriptores()`, así que añadir un reporte más es escribir su clase
  * y una entrada aquí.
  *
  * Los informes de un expediente concreto —historia clínica, mapeo venoso y
@@ -62,13 +62,6 @@ final class CatalogoReportes
             'roles' => ['administrador', 'medico'],
             'filtros' => ['medico_id'],
         ],
-        'diagnosticos-ceap' => [
-            'clase' => DiagnosticosCeap::class,
-            'titulo' => 'Diagnósticos CEAP',
-            'descripcion' => 'Distribución de la clase clínica C0–C6 y de los ejes etiológico, anatómico y fisiopatológico.',
-            'roles' => ['administrador', 'medico'],
-            'filtros' => ['patient_id'],
-        ],
         'sintomas-antecedentes' => [
             'clase' => SintomasFrecuentes::class,
             'titulo' => 'Síntomas y antecedentes frecuentes',
@@ -96,6 +89,16 @@ final class CatalogoReportes
             'descripcion' => 'Consolidado de los estudios del período, con los segmentos que aparecen con reflujo y sus medidas medias.',
             'roles' => ['administrador', 'medico'],
             'filtros' => ['patient_id'],
+        ],
+        // Solo el administrador: quién tiene cuenta y con qué rol es lo mismo
+        // que gestiona /users, que también está cerrada a ese rol. Abrir el
+        // reporte y no la pantalla sería sacar por PDF lo que la API niega.
+        'usuarios' => [
+            'clase' => UsuariosDelSistema::class,
+            'titulo' => 'Reporte de usuarios',
+            'descripcion' => 'Cuentas del sistema con su rol y su estado, las altas del período y la actividad que dejó cada una.',
+            'roles' => ['administrador'],
+            'filtros' => [],
         ],
     ];
 

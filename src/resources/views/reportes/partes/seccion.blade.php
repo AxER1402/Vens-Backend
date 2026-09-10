@@ -25,17 +25,27 @@
     @endif
 
     @if ($tipo === 'campos')
-        @php $filas = array_chunk($seccion['campos'], 2, true); @endphp
+        @php $filas = \App\Support\Reportes\Ficha::filasDeCampos($seccion['campos'], $seccion['enteros'] ?? []); @endphp
         <table class="campos">
             @foreach ($filas as $fila)
                 <tr>
-                    @foreach ($fila as $etiqueta => $valor)
-                        <td class="et">{{ $etiqueta }}</td>
-                        <td class="va">{{ $valor }}</td>
-                    @endforeach
-                    @for ($i = count($fila); $i < 2; $i++)
-                        <td class="et"></td><td class="va"></td>
-                    @endfor
+                    @if ($fila['entera'])
+                        {{-- Un valor que es una frase se lleva la fila entera: a
+                             media fila parte en varias líneas y deja la otra
+                             mitad en blanco. --}}
+                        @foreach ($fila['campos'] as $etiqueta => $valor)
+                            <td class="et">{{ $etiqueta }}</td>
+                            <td class="va va-ancha" colspan="3">{{ $valor }}</td>
+                        @endforeach
+                    @else
+                        @foreach ($fila['campos'] as $etiqueta => $valor)
+                            <td class="et">{{ $etiqueta }}</td>
+                            <td class="va">{{ $valor }}</td>
+                        @endforeach
+                        @for ($i = count($fila['campos']); $i < 2; $i++)
+                            <td class="et"></td><td class="va"></td>
+                        @endfor
+                    @endif
                 </tr>
             @endforeach
         </table>

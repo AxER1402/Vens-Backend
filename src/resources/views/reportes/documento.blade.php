@@ -82,6 +82,9 @@
     .campos td { padding: 0.9mm 2mm 0.9mm 0; vertical-align: top; }
     .campos .et { width: 21%; font-size: 7.8pt; color: #3A5F6F; }
     .campos .va { width: 29%; font-size: 9pt; }
+    /* Valor que se lleva la fila entera (colspan=3): ocupa lo que dejan las tres
+       columnas restantes en vez del 29 % de una sola. */
+    .campos .va-ancha { width: 79%; }
 
     /* Tablas de datos */
     .datos { width: 100%; border-collapse: collapse; margin-top: 1mm; }
@@ -119,12 +122,22 @@
 
     /* ── Firma ──────────────────────────────────────────────────────────── */
     /* La firma nunca se parte y no se queda sola: si no cabe entera se va con
-       el último bloque a la página siguiente. */
-    .firma { margin-top: 8mm; page-break-inside: avoid; }
-    .firma-linea { border-top: 0.5pt solid #1B2A42; width: 62mm; margin-bottom: 1mm; }
-    .firma-nombre { font-size: 9pt; font-weight: bold; }
+       el último bloque a la página siguiente.
+
+       El hueco de arriba es el espacio donde se firma a mano, así que se deja
+       ancho a propósito: con los 8 mm de antes la rúbrica se montaba encima del
+       último renglón del informe. Y el bloque va centrado, que es donde se
+       espera encontrar una firma en un documento clínico. */
+    .firma { margin-top: 20mm; page-break-inside: avoid; text-align: center; }
+    /* mPDF no centra un <div> con márgenes automáticos, pero sí una tabla con
+       align="center": de ahí que el pie de firma sea una tabla de una columna. */
+    .firma-caja { width: 72mm; border-collapse: collapse; }
+    .firma-caja td { text-align: center; padding: 0; }
+    /* La raya de la firma es el borde superior del nombre: así no hace falta una
+       celda vacía, que mPDF colapsaría. */
+    .firma-nombre { border-top: 0.5pt solid #1B2A42; padding-top: 1.2mm; font-size: 9pt; font-weight: bold; }
     .firma-detalle { font-size: 7.6pt; color: #3A5F6F; }
-    .emitido { font-size: 7.4pt; color: #3A5F6F; margin-top: 1.5mm; }
+    .emitido { font-size: 7.4pt; color: #3A5F6F; padding-top: 1.5mm; }
 </style>
 
 {{--
@@ -172,13 +185,14 @@
 
 {{-- Firma --}}
 <div class="firma">
-    <div class="firma-linea"></div>
-    <div class="firma-nombre">{{ $doc['firma']['nombre'] }}</div>
-    @if (!empty($doc['firma']['colegiado']))
-        <div class="firma-detalle">Colegiado n.º {{ $doc['firma']['colegiado'] }}</div>
-    @endif
-    @if (!empty($doc['firma']['registrado_por']) && $doc['firma']['registrado_por'] !== $doc['firma']['nombre'])
-        <div class="firma-detalle">Registró: {{ $doc['firma']['registrado_por'] }}</div>
-    @endif
-    <div class="emitido">Emitido el {{ $doc['firma']['emitido'] }}</div>
+    <table class="firma-caja" align="center">
+        <tr><td class="firma-nombre">{{ $doc['firma']['nombre'] }}</td></tr>
+        @if (!empty($doc['firma']['colegiado']))
+            <tr><td class="firma-detalle">Colegiado n.º {{ $doc['firma']['colegiado'] }}</td></tr>
+        @endif
+        @if (!empty($doc['firma']['registrado_por']) && $doc['firma']['registrado_por'] !== $doc['firma']['nombre'])
+            <tr><td class="firma-detalle">Registró: {{ $doc['firma']['registrado_por'] }}</td></tr>
+        @endif
+        <tr><td class="emitido">Emitido el {{ $doc['firma']['emitido'] }}</td></tr>
+    </table>
 </div>

@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Invoice\StoreInvoiceRequest;
+use App\Models\ClinicalHistory;
 use App\Models\Invoice;
 use App\Support\Facturacion\Certificador;
 use App\Support\Facturacion\DatosDocumento;
@@ -12,7 +13,9 @@ use App\Support\Listados\Pagina;
 use App\Support\Reportes\Emision;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use App\Support\Reportes\Formato;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Validation\ValidationException;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class InvoiceController extends Controller
@@ -88,6 +91,14 @@ class InvoiceController extends Controller
         $cuentas = Totales::calcular(array_values($renglones), $ivaPorcentaje);
 
         $documento = DB::transaction(function () use ($datos, $cuentas, $ivaPorcentaje, $request): Invoice {
+            // Una consulta se cobra una vez. Va aquí dentro y no en las reglas
+            // del formulario por lo mismo que el correlativo: dos cobros a la
+            // vez de la misma consulta pasarían los dos si cada uno mirase
+            // antes de que el otro escribiera.
+            if (! empty($datos['clinical_history_id'])) {
+                $this->negarCobroRepetido((int) $datos['clinical_history_id']);
+            }
+
             $serie = (string) config('facturacion.serie', 'A');
 
             // El correlativo se toma dentro de la transacción y con la fila
@@ -148,6 +159,46 @@ class InvoiceController extends Controller
                 : "Recibo {$documento->correlativo} emitido.",
             'data' => $documento,
         ], 201);
+    }
+
+    /**
+     * Negarse a cobrar dos veces la misma consulta.
+     *
+     * El vínculo consulta → documento estaba guardado desde el principio, pero
+     * no lo miraba nadie: nada impedía emitir un segundo cobro de la misma
+     * visita, y eso se descubre con el paciente delante. Ahora el segundo se
+     * rechaza diciendo cuál fue el primero.
+     *
+     * Los anulados no cuentan, y es a propósito: si el documento salió mal se
+     * anula —el número queda gastado, como manda el correlativo— y la consulta
+     * vuelve a quedar libre para cobrarse. Esa es la vía para corregir un cobro,
+     * no emitir otro encima.
+     *
+     * @throws ValidationException
+     */
+    private function negarCobroRepetido(int $consultaId): void
+    {
+        $existente = Invoice::query()
+            ->where('clinical_history_id', $consultaId)
+            ->vigentes()
+            ->lockForUpdate()
+            ->first();
+
+        if ($existente === null) {
+            return;
+        }
+
+        $consulta = ClinicalHistory::query()->find($consultaId);
+
+        throw ValidationException::withMessages([
+            'clinical_history_id' => sprintf(
+                'La consulta del %s ya se cobró con el documento %s (%s). '
+                .'Anule ese documento si necesita volver a cobrarla.',
+                Formato::fecha($consulta?->fecha_consulta),
+                $existente->correlativo,
+                DatosDocumento::quetzales($existente->total),
+            ),
+        ]);
     }
 
     /**

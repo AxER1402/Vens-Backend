@@ -117,7 +117,10 @@ class DatosDoppler
             ]];
         }
 
-        $seccion = Ficha::seccionCampos($titulo, $campos);
+        // El estado del sistema profundo se informa con una frase completa
+        // —«eje venoso permeable y compresible, sin reflujo»—, así que se lleva
+        // la fila entera; perforantes y trombosis son cortas y van a la par.
+        $seccion = Ficha::seccionCampos($titulo, $campos, ['Sistema venoso profundo']);
 
         if ($seccion) {
             $bloques[] = $seccion;
