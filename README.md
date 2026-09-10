@@ -643,6 +643,16 @@ manual equivalente a `make migrate`.
 | `make prod-ps` | Estado de los contenedores |
 | `make prod-shell` | Terminal dentro del contenedor de la aplicación |
 | `make prod-key` | Genera una `APP_KEY` |
+| `make prod-db` | Consola de MySQL (el 3306 no está publicado) |
+| `make prod-seed` | Siembra los catálogos sin borrar nada |
+| `make prod-reset` | ⚠ Vacía la base, resiembra y borra los archivos subidos |
+
+`make prod-reset` existe para probar el despliegue y dejarlo después como
+estaba. Hace falta un target propio porque `migrate:fresh` por su cuenta no
+basta: los archivos subidos viven en el volumen `vens_prod_storage` y las
+cascadas de MySQL no los tocan, los ajustes cacheados están en Redis, y sin
+`--seed` la base queda sin roles ni usuarios, es decir, sin poder entrar.
+Deja los cuatro usuarios y cuatro pacientes de ejemplo del seeder.
 
 ### Actualizar una versión desplegada
 
