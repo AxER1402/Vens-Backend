@@ -14,6 +14,19 @@ return Application::configure(basePath: dirname(__DIR__))
         health: '/up',
     )
     ->withMiddleware(function (Middleware $middleware): void {
+        // En producción la aplicación no recibe las peticiones directamente:
+        // delante hay un proxy que resuelve el HTTPS y las reenvía. Sin esto,
+        // Laravel tomaría la IP del proxy como la del cliente, y el
+        // throttle:5,1 de la recuperación de contraseña pasaría a ser un cupo
+        // único para toda la clínica en vez de uno por persona.
+        //
+        // Se confía en cualquier proxy ('*') y no en una IP concreta porque la
+        // de la red de Docker cambia entre reconstrucciones. Es seguro aquí: el
+        // contenedor solo publica su puerto en 127.0.0.1, así que lo único que
+        // puede conectarse —y por tanto lo único que puede escribir esas
+        // cabeceras— es el proxy de la propia máquina.
+        $middleware->trustProxies(at: '*');
+
         $middleware->alias([
             'role' => \App\Http\Middleware\EnsureRole::class,
         ]);
