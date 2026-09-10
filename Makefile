@@ -38,7 +38,8 @@ NC     = \033[0m # Sin color
 .PHONY: help up down restart build shell logs ps clean migrate \
         migrate-fresh seed tinker test cache-clear key-generate \
         composer-install artisan queue-work logs-vite npm restart-vite \
-        prod-build prod-up prod-down prod-logs prod-shell prod-ps prod-key
+        prod-build prod-up prod-down prod-logs prod-shell prod-ps prod-key \
+        prod-reset prod-seed prod-db
 
 # ── Ayuda ─────────────────────────────────────────────────────────────────────
 # Ejecutar solo "make" muestra esta ayuda
@@ -381,3 +382,45 @@ prod-shell:
 prod-key:
 	@echo "$(YELLOW)Copie esta línea completa en APP_KEY de .env.prod:$(NC)"
 	@docker run --rm --entrypoint php vens-app:latest artisan key:generate --show
+
+# Consola de MySQL de producción.
+# Es la única vía: docker-compose.prod.yml no publica el 3306, así que desde
+# fuera del servidor no hay a dónde conectarse. La contraseña se lee de las
+# variables del propio contenedor y nunca aparece en la línea de comandos.
+prod-db:
+	$(COMPOSE_PROD) exec mysql sh -c 'exec mysql -u root -p"$$MYSQL_ROOT_PASSWORD" "$$MYSQL_DATABASE"'
+
+# Sembrar los catálogos de producción sin borrar nada.
+# Hace falta explícitamente porque el entrypoint migra pero NO siembra: una base
+# recién creada tiene las tablas vacías, y sin roles ni usuarios no hay forma de
+# iniciar sesión. Los seeders de catálogo son idempotentes; PatientSeeder no,
+# así que repetir esto duplica los cuatro pacientes de ejemplo.
+prod-seed:
+	@test -f .env.prod || { echo "$(RED)✖ Falta .env.prod — cópielo de .env.prod.example$(NC)"; exit 1; }
+	@echo "$(YELLOW)🌱 Sembrando la base de producción...$(NC)"
+	$(COMPOSE_PROD) exec -u www-data app php artisan db:seed --force
+	@echo "$(GREEN)✔ Catálogos sembrados$(NC)"
+
+# Devolver producción al estado recién instalado, para probar sin dejar rastro.
+# ⚠ PRECAUCIÓN: Elimina TODOS los datos de PRODUCCIÓN
+#
+# No basta con vaciar la base: hay tres rastros que viven fuera de ella.
+#   1. Los archivos subidos (mapeo venoso, avatares, logo del membrete) están en
+#      el volumen vens_prod_storage y las cascadas de MySQL no los tocan.
+#   2. Los ajustes cacheados y los contadores de throttle viven en Redis.
+#   3. Sin --seed la base queda sin roles ni usuarios, o sea, sin login.
+#
+# Se limpia la caché con cache:clear y no con FLUSHALL de Redis: basta, y así no
+# se tumban de paso las sesiones ni nada más que comparta la instancia.
+prod-reset:
+	@test -f .env.prod || { echo "$(RED)✖ Falta .env.prod — cópielo de .env.prod.example$(NC)"; exit 1; }
+	@echo "$(RED)⚠ ADVERTENCIA: Esto eliminará TODOS los datos de PRODUCCIÓN$(NC)"
+	@read -p "¿Continuar? [s/N]: " confirm && [ "$$confirm" = "s" ] || exit 1
+	@echo "$(YELLOW)🗃  Vaciando la base y volviendo a sembrar...$(NC)"
+	$(COMPOSE_PROD) exec -u www-data app php artisan migrate:fresh --seed --force
+	@echo "$(YELLOW)🗑  Borrando los archivos subidos...$(NC)"
+	$(COMPOSE_PROD) exec -u www-data app sh -c 'rm -rf /var/www/html/storage/app/public/mapeos-venosos /var/www/html/storage/app/public/avatares /var/www/html/storage/app/public/ajustes'
+	@echo "$(YELLOW)🧹 Limpiando la caché...$(NC)"
+	$(COMPOSE_PROD) exec -u www-data app php artisan cache:clear
+	@echo "$(GREEN)✔ Producción de vuelta en su estado inicial$(NC)"
+	@echo "$(YELLOW)Quedan los 4 usuarios y 4 pacientes de ejemplo del seeder.$(NC)"
