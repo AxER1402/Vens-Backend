@@ -265,15 +265,29 @@ class GeneradorWord
     {
         $tabla = $seccion->addTable(['cellMargin' => 40, 'width' => 100 * 50, 'unit' => 'pct']);
 
-        foreach (array_chunk($bloque['campos'], 2, true) as $fila) {
+        // El reparto en filas lo decide Ficha, el mismo que usa el PDF: si cada
+        // generador lo hiciera por su cuenta, los dos documentos del mismo
+        // informe saldrían maquetados distinto.
+        foreach (Ficha::filasDeCampos($bloque['campos'], $bloque['enteros'] ?? []) as $fila) {
             $tabla->addRow();
 
-            foreach ($fila as $etiqueta => $valor) {
+            if ($fila['entera']) {
+                foreach ($fila['campos'] as $etiqueta => $valor) {
+                    $tabla->addCell(2200)->addText(htmlspecialchars($etiqueta), ['size' => 8, 'color' => self::GRIS], ['spaceAfter' => 0]);
+                    // gridSpan es el colspan de Word: el valor se lleva las tres
+                    // columnas que quedan.
+                    $tabla->addCell(7800, ['gridSpan' => 3])->addText(htmlspecialchars($valor), ['size' => 9], ['spaceAfter' => 0]);
+                }
+
+                continue;
+            }
+
+            foreach ($fila['campos'] as $etiqueta => $valor) {
                 $tabla->addCell(2200)->addText(htmlspecialchars($etiqueta), ['size' => 8, 'color' => self::GRIS], ['spaceAfter' => 0]);
                 $tabla->addCell(2800)->addText(htmlspecialchars($valor), ['size' => 9], ['spaceAfter' => 0]);
             }
 
-            for ($i = count($fila); $i < 2; $i++) {
+            for ($i = count($fila['campos']); $i < 2; $i++) {
                 $tabla->addCell(2200)->addText('');
                 $tabla->addCell(2800)->addText('');
             }
@@ -375,20 +389,35 @@ class GeneradorWord
      */
     private function firma(Section $seccion, array $doc): void
     {
-        $seccion->addTextBreak(3);
-        $seccion->addText('', [], ['borderTopSize' => 6, 'borderTopColor' => '1B2A42', 'spaceAfter' => 0]);
+        // El hueco de arriba es donde se firma a mano: con los tres saltos de
+        // antes la rúbrica caía encima del último renglón del informe.
+        $seccion->addTextBreak(5);
 
-        $seccion->addText(htmlspecialchars($doc['firma']['nombre']), ['bold' => true, 'size' => 9.5], ['spaceAfter' => 0]);
+        // Word dibuja el borde de un párrafo hasta donde llega su sangría, así
+        // que sangrar por los dos lados es lo que deja la raya de la firma
+        // corta y centrada en lugar de cruzar la hoja entera.
+        $sangria = ['left' => Converter::cmToTwip(4.8), 'right' => Converter::cmToTwip(4.8)];
+
+        $seccion->addText('', [], [
+            'borderTopSize' => 6,
+            'borderTopColor' => '1B2A42',
+            'spaceAfter' => 0,
+            'indentation' => $sangria,
+        ]);
+
+        $centrado = ['alignment' => Jc::CENTER, 'spaceAfter' => 0];
+
+        $seccion->addText(htmlspecialchars($doc['firma']['nombre']), ['bold' => true, 'size' => 9.5], $centrado);
 
         if (! empty($doc['firma']['colegiado'])) {
-            $seccion->addText('Colegiado n.º '.htmlspecialchars($doc['firma']['colegiado']), ['size' => 8, 'color' => self::GRIS], ['spaceAfter' => 0]);
+            $seccion->addText('Colegiado n.º '.htmlspecialchars($doc['firma']['colegiado']), ['size' => 8, 'color' => self::GRIS], $centrado);
         }
 
         if (! empty($doc['firma']['registrado_por']) && $doc['firma']['registrado_por'] !== $doc['firma']['nombre']) {
-            $seccion->addText('Registró: '.htmlspecialchars($doc['firma']['registrado_por']), ['size' => 8, 'color' => self::GRIS], ['spaceAfter' => 0]);
+            $seccion->addText('Registró: '.htmlspecialchars($doc['firma']['registrado_por']), ['size' => 8, 'color' => self::GRIS], $centrado);
         }
 
-        $seccion->addText('Emitido el '.htmlspecialchars($doc['firma']['emitido']), ['size' => 7.5, 'color' => self::GRIS]);
+        $seccion->addText('Emitido el '.htmlspecialchars($doc['firma']['emitido']), ['size' => 7.5, 'color' => self::GRIS], ['alignment' => Jc::CENTER]);
     }
 
     /*

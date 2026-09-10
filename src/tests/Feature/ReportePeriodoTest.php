@@ -37,7 +37,7 @@ class ReportePeriodoTest extends TestCase
     private const HASTA = '2026-09-30';
 
     /**
-     * Los nueve reportes del catálogo con el prefijo del archivo que emiten.
+     * Los reportes del catálogo con el prefijo del archivo que emiten.
      *
      * @var array<string, string>
      */
@@ -46,11 +46,11 @@ class ReportePeriodoTest extends TestCase
         'pacientes-atendidos' => 'pacientes-atendidos',
         'citas' => 'citas',
         'productividad-medico' => 'productividad-medico',
-        'diagnosticos-ceap' => 'diagnosticos-ceap',
         'sintomas-antecedentes' => 'sintomas-antecedentes',
         'tratamientos-indicaciones' => 'tratamientos-indicaciones',
         'evolucion-seguimiento' => 'evolucion-seguimiento',
         'estudios-ecodoppler' => 'estudios-ecodoppler',
+        'usuarios' => 'usuarios',
     ];
 
     protected function setUp(): void
@@ -68,6 +68,16 @@ class ReportePeriodoTest extends TestCase
     private function medico(): User
     {
         return User::where('rol', 'medico')->first();
+    }
+
+    /**
+     * Quien puede emitir el catálogo entero. El médico no sirve para recorrerlo:
+     * el reporte de usuarios está cerrado a la administración, igual que la
+     * pantalla desde la que se gestionan las cuentas.
+     */
+    private function administrador(): User
+    {
+        return User::where('rol', 'administrador')->first();
     }
 
     private function paciente(string $nombre, int $edad = 42): Patient
@@ -212,10 +222,10 @@ class ReportePeriodoTest extends TestCase
     public function test_every_report_in_the_catalog_is_emitted_as_pdf(): void
     {
         $this->sembrarActividad();
-        $medico = $this->medico();
+        $emisor = $this->administrador();
 
         foreach (self::REPORTES as $clave => $archivo) {
-            $response = $this->actingAs($medico, 'sanctum')->get($this->url($clave));
+            $response = $this->actingAs($emisor, 'sanctum')->get($this->url($clave));
 
             $response->assertStatus(200, "El reporte '{$clave}' no se emitió.")
                 ->assertHeader('Content-Type', 'application/pdf');
@@ -232,10 +242,10 @@ class ReportePeriodoTest extends TestCase
     public function test_every_report_in_the_catalog_is_emitted_as_word(): void
     {
         $this->sembrarActividad();
-        $medico = $this->medico();
+        $emisor = $this->administrador();
 
         foreach (array_keys(self::REPORTES) as $clave) {
-            $response = $this->actingAs($medico, 'sanctum')->get($this->url($clave, 'docx'));
+            $response = $this->actingAs($emisor, 'sanctum')->get($this->url($clave, 'docx'));
 
             $response->assertStatus(200, "El reporte '{$clave}' no se emitió en Word.")
                 ->assertHeader('Content-Type', self::TIPO_DOCX);
@@ -251,10 +261,10 @@ class ReportePeriodoTest extends TestCase
      */
     public function test_an_empty_period_still_produces_a_document(): void
     {
-        $medico = $this->medico();
+        $emisor = $this->administrador();
 
         foreach (array_keys(self::REPORTES) as $clave) {
-            $response = $this->actingAs($medico, 'sanctum')
+            $response = $this->actingAs($emisor, 'sanctum')
                 ->get("/api/v1/reportes/{$clave}?desde=2020-01-01&hasta=2020-01-31");
 
             $response->assertStatus(200, "El reporte '{$clave}' falló con un período vacío.");
@@ -361,7 +371,7 @@ class ReportePeriodoTest extends TestCase
 
     public function test_the_catalog_lists_what_the_user_may_emit(): void
     {
-        $this->actingAs($this->medico(), 'sanctum')
+        $this->actingAs($this->administrador(), 'sanctum')
             ->getJson('/api/v1/reportes')
             ->assertStatus(200)
             ->assertJsonCount(count(self::REPORTES), 'data')
@@ -399,6 +409,28 @@ class ReportePeriodoTest extends TestCase
         $this->actingAs($recepcionista, 'sanctum')
             ->get($this->url('citas'))
             ->assertStatus(200);
+    }
+
+    /**
+     * El reporte de usuarios es de la administración: el médico ve el resto del
+     * catálogo, pero de este no puede sacar ni el PDF ni la tarjeta.
+     */
+    public function test_a_doctor_cannot_emit_the_users_report(): void
+    {
+        $medico = $this->medico();
+
+        $this->actingAs($medico, 'sanctum')
+            ->getJson($this->url('usuarios'))
+            ->assertStatus(403)
+            ->assertJson(['success' => false]);
+
+        $claves = collect($this->actingAs($medico, 'sanctum')
+            ->getJson('/api/v1/reportes')
+            ->assertStatus(200)
+            ->json('data'))
+            ->pluck('clave');
+
+        $this->assertNotContains('usuarios', $claves->all());
     }
 
     public function test_reports_require_authentication(): void

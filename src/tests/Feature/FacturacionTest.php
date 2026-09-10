@@ -48,6 +48,17 @@ class FacturacionTest extends TestCase
         ]);
     }
 
+    private function consulta(string $fecha = '2026-09-02', ?Patient $paciente = null): ClinicalHistory
+    {
+        return ClinicalHistory::create([
+            'patient_id' => ($paciente ?? $this->paciente())->id,
+            'fecha_consulta' => $fecha,
+            'consulta_por' => 'Enfermedad',
+            'ubicacion_patologia' => 'BILATERAL',
+            'estado_registro' => 'Finalizada',
+        ]);
+    }
+
     /** @return array<string, mixed> */
     private function cobro(array $extra = []): array
     {
@@ -247,6 +258,128 @@ class FacturacionTest extends TestCase
             ->assertStatus(200)->json('data');
 
         $this->assertCount(1, $delExpediente);
+    }
+
+    /**
+     * El vínculo consulta → documento estaba guardado pero no lo miraba nadie,
+     * así que la misma visita se podía cobrar dos veces. Se comprueba con el
+     * segundo cobro, que es donde se descubría el problema: con el paciente
+     * delante y el documento ya impreso.
+     */
+    public function test_una_consulta_no_se_puede_cobrar_dos_veces(): void
+    {
+        $recepcion = $this->recepcionista();
+        $historia = $this->consulta();
+
+        $primero = $this->actingAs($recepcion, 'sanctum')
+            ->postJson('/api/v1/invoices', $this->cobro([
+                'patient_id' => $historia->patient_id,
+                'clinical_history_id' => $historia->id,
+            ]))
+            ->assertStatus(201)->json('data');
+
+        $this->actingAs($recepcion, 'sanctum')
+            ->postJson('/api/v1/invoices', $this->cobro([
+                'patient_id' => $historia->patient_id,
+                'clinical_history_id' => $historia->id,
+            ]))
+            ->assertStatus(422)
+            ->assertJsonValidationErrors('clinical_history_id');
+
+        // El rechazo no puede gastar correlativo: el número siguiente sigue
+        // siendo el que le tocaba.
+        $this->assertSame(1, Invoice::count());
+        $this->assertSame(2, Invoice::siguienteNumero($primero['serie']));
+    }
+
+    /**
+     * Anular es la vía para corregir un cobro equivocado: el número queda
+     * gastado y la consulta vuelve a quedar libre. Si el bloqueo no distinguiera
+     * el anulado, un recibo mal hecho dejaría la consulta imposible de cobrar.
+     */
+    public function test_anular_el_cobro_deja_la_consulta_libre_otra_vez(): void
+    {
+        $recepcion = $this->recepcionista();
+        $historia = $this->consulta();
+
+        $primero = $this->actingAs($recepcion, 'sanctum')
+            ->postJson('/api/v1/invoices', $this->cobro([
+                'patient_id' => $historia->patient_id,
+                'clinical_history_id' => $historia->id,
+            ]))->json('data');
+
+        $this->actingAs($recepcion, 'sanctum')
+            ->patchJson("/api/v1/invoices/{$primero['id']}/anular", ['motivo_anulacion' => 'Monto equivocado'])
+            ->assertStatus(200);
+
+        $this->actingAs($recepcion, 'sanctum')
+            ->postJson('/api/v1/invoices', $this->cobro([
+                'patient_id' => $historia->patient_id,
+                'clinical_history_id' => $historia->id,
+            ]))
+            ->assertStatus(201);
+    }
+
+    /**
+     * El bloqueo es por consulta, no por paciente: alguien que viene dos veces
+     * en el mes paga dos veces, y eso tiene que seguir pudiéndose cobrar. Un
+     * cobro suelto —sin consulta atada— tampoco estorba a los demás.
+     */
+    public function test_cada_consulta_se_cobra_por_separado(): void
+    {
+        $recepcion = $this->recepcionista();
+        $paciente = $this->paciente();
+
+        $septiembre = $this->consulta('2026-09-02', $paciente);
+        $octubre = $this->consulta('2026-10-07', $paciente);
+
+        foreach ([$septiembre, $octubre] as $consulta) {
+            $this->actingAs($recepcion, 'sanctum')
+                ->postJson('/api/v1/invoices', $this->cobro([
+                    'patient_id' => $paciente->id,
+                    'clinical_history_id' => $consulta->id,
+                ]))
+                ->assertStatus(201);
+        }
+
+        // Y un cobro sin consulta atada sigue siendo posible las veces que haga falta
+        $this->actingAs($recepcion, 'sanctum')
+            ->postJson('/api/v1/invoices', $this->cobro(['patient_id' => $paciente->id]))
+            ->assertStatus(201);
+
+        $this->assertSame(3, Invoice::count());
+    }
+
+    /**
+     * El historial del mostrador se lee un día a la vez, así que el listado
+     * tiene que recortar de verdad por fecha: con todo junto, buscar el recibo
+     * de esta mañana era ir pasando páginas de meses viejos.
+     */
+    public function test_el_historial_se_puede_pedir_de_un_solo_dia(): void
+    {
+        $recepcion = $this->recepcionista();
+        $paciente = $this->paciente();
+
+        foreach (['2026-09-08', '2026-09-09', '2026-09-09'] as $fecha) {
+            $this->actingAs($recepcion, 'sanctum')
+                ->postJson('/api/v1/invoices', $this->cobro([
+                    'patient_id' => $paciente->id,
+                    'fecha_emision' => $fecha,
+                ]))
+                ->assertStatus(201);
+        }
+
+        $delNueve = $this->actingAs($recepcion, 'sanctum')
+            ->getJson('/api/v1/invoices?from_date=2026-09-09&to_date=2026-09-09')
+            ->assertStatus(200)->json('data');
+
+        $this->assertCount(2, $delNueve);
+        $this->assertSame(['2026-09-09', '2026-09-09'], array_column($delNueve, 'fecha_emision'));
+
+        // Un día sin cobros devuelve la lista vacía, no todos los documentos
+        $this->assertCount(0, $this->actingAs($recepcion, 'sanctum')
+            ->getJson('/api/v1/invoices?from_date=2026-09-10&to_date=2026-09-10')
+            ->assertStatus(200)->json('data'));
     }
 
     public function test_los_renglones_conservan_el_orden_en_que_se_escribieron(): void

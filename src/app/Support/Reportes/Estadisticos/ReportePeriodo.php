@@ -18,7 +18,7 @@ use App\Support\Reportes\Formato;
  *
  * Cada reporte concreto solo tiene que decir cómo se titula y qué secciones
  * lleva; el resto (envoltura, ficha, firma, nombre del archivo) se resuelve
- * aquí una vez para los diez.
+ * aquí una vez para todos.
  */
 abstract class ReportePeriodo
 {
