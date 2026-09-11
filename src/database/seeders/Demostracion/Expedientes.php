@@ -302,6 +302,8 @@ class Expedientes
                         'observaciones' => ['Buena respuesta', 'Pigmentación'],
                     ],
                     'cobro' => [
+                        'tipo' => 'factura',
+                        'nit' => '7108452-3',
                         'metodo_pago' => 'Transferencia',
                         'renglones' => [
                             ['descripcion' => 'Sesión de escleroterapia con espuma — MII', 'cantidad' => 1, 'precio_unitario' => 750.00],
@@ -1092,12 +1094,9 @@ class Expedientes
                         'izq_trombosis' => 'Sin signos de trombosis.',
                         'conclusion' => 'Insuficiencia de la unión safeno-femoral y del tronco de la safena magna derecha limitada al muslo, con perforante de Dodd incompetente y safena magna de pierna competente. Safena menor derecha hipoplásica sin reflujo. Miembro inferior izquierdo normal. El reflujo es segmentario, por lo que se puede tratar el segmento de muslo y conservar el resto del tronco.',
                     ],
-                    'cobro' => [
-                        'metodo_pago' => 'Tarjeta',
-                        'renglones' => [
-                            ['descripcion' => 'Ecodöppler venoso de miembros inferiores (bilateral)', 'cantidad' => 1, 'precio_unitario' => 650.00],
-                        ],
-                    ],
+                    // Sin cobro propio: este estudio lo paga el patrono del
+                    // paciente, con factura a nombre de la empresa. Está en
+                    // Cobros::sueltos().
                 ],
             ],
 
@@ -1222,8 +1221,23 @@ class Expedientes
                         'indicaciones' => ['AINEs', 'Medias Compresivas'],
                         'observaciones' => ['Buena respuesta', 'Sin complicaciones'],
                     ],
+                    // El primer recibo salió con el concepto de la sesión anterior
+                    // y por el precio de una sola pierna. No se corrige: se
+                    // anula —el número queda gastado— y se emite el bueno, que
+                    // es lo que el módulo obliga a hacer.
+                    'cobro_anulado' => [
+                        'metodo_pago' => 'Transferencia',
+                        'anulacion' => [
+                            'dias' => 58,
+                            'motivo' => 'Emitido con el concepto equivocado: dice sesión de telangiectasias y la sesión fue de espuma bilateral',
+                        ],
+                        'renglones' => [
+                            ['descripcion' => 'Sesión de escleroterapia de telangiectasias', 'cantidad' => 1, 'precio_unitario' => 650.00],
+                        ],
+                    ],
                     'cobro' => [
                         'metodo_pago' => 'Transferencia',
+                        'observaciones' => 'Sustituye al documento anulado de la misma fecha.',
                         'renglones' => [
                             ['descripcion' => 'Sesión de escleroterapia con espuma — bilateral', 'cantidad' => 1, 'precio_unitario' => 850.00],
                         ],
