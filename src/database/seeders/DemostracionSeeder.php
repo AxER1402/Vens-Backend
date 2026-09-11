@@ -12,8 +12,10 @@ use App\Models\Patient;
 use App\Models\Service;
 use App\Models\User;
 use App\Support\Ajustes\Ajustes;
+use App\Support\Facturacion\Certificador;
 use App\Support\Facturacion\Totales;
 use App\Support\MapeoVenoso\Catalogo;
+use Database\Seeders\Demostracion\Cobros;
 use Database\Seeders\Demostracion\Expedientes;
 use Database\Seeders\Demostracion\LaminaMapeo;
 use Illuminate\Database\Seeder;
@@ -75,11 +77,35 @@ class DemostracionSeeder extends Seeder
 
         $this->limpiar(array_column(array_column($expedientes, 'paciente'), 'nombre'));
 
+        // Los cobros no se emiten mientras se siembra cada expediente: se
+        // apuntan y se emiten todos al final, ordenados por fecha. El
+        // correlativo de la clínica es uno solo para todos los pacientes, así
+        // que emitirlos paciente por paciente dejaba el documento de mayo con
+        // un número posterior al de agosto, y eso es lo primero que mira quien
+        // revisa una serie de documentos de cobro.
+        $pendientes = [];
+        $pacientes = [];
+
         foreach ($expedientes as $expediente) {
-            $this->sembrarExpediente($expediente, $hoy, $medico, $recepcion);
+            $paciente = $this->sembrarExpediente($expediente, $hoy, $medico, $recepcion, $pendientes);
+            $pacientes[$paciente->nombre] = $paciente;
         }
 
-        $this->command?->info('  Sembrados '.count($expedientes).' expedientes de demostración.');
+        foreach (Cobros::sueltos($hoy) as $suelto) {
+            $paciente = $pacientes[$suelto['paciente']] ?? null;
+
+            if ($paciente === null) {
+                $this->command?->warn("  Cobro suelto sin paciente: {$suelto['paciente']}");
+
+                continue;
+            }
+
+            $this->apuntar($pendientes, $suelto['fecha'], $paciente, null, $suelto);
+        }
+
+        $emitidos = $this->emitirCobros($pendientes, $recepcion);
+
+        $this->command?->info('  Sembrados '.count($expedientes).' expedientes y '.$emitidos.' documentos de cobro.');
     }
 
     /*
@@ -186,26 +212,29 @@ class DemostracionSeeder extends Seeder
 
     /**
      * @param  array<string, mixed>  $expediente
+     * @param  array<int, array<string, mixed>>  $pendientes  Cobros por emitir
      */
-    private function sembrarExpediente(array $expediente, Carbon $hoy, User $medico, User $recepcion): void
+    private function sembrarExpediente(array $expediente, Carbon $hoy, User $medico, User $recepcion, array &$pendientes): Patient
     {
         $paciente = Patient::create($expediente['paciente']);
 
         // Las historias se crean primero porque el Ecodöppler cuelga de una de
-        // ellas y el recibo, cuando lo hay, se ata a la consulta que cobra.
+        // ellas y el cobro, cuando lo hay, se ata a la consulta que cobra.
         $historias = [];
 
         foreach ($expediente['consultas'] as $consulta) {
-            $historias[] = $this->consulta($consulta, $paciente, $medico, $recepcion);
+            $historias[] = $this->consulta($consulta, $paciente, $medico, $recepcion, $pendientes);
         }
 
         foreach ($expediente['doppler'] ?? [] as $estudio) {
-            $this->estudio($estudio, $paciente, $historias, $medico, $recepcion);
+            $this->estudio($estudio, $paciente, $historias, $medico, $recepcion, $pendientes);
         }
 
         foreach ($expediente['citas'] ?? [] as $cita) {
             $this->cita($cita, $paciente, $hoy, $medico, $recepcion);
         }
+
+        return $paciente;
     }
 
     /**
@@ -214,7 +243,7 @@ class DemostracionSeeder extends Seeder
      *
      * @param  array<string, mixed>  $consulta
      */
-    private function consulta(array $consulta, Patient $paciente, User $medico, User $recepcion): ClinicalHistory
+    private function consulta(array $consulta, Patient $paciente, User $medico, User $recepcion, array &$pendientes): ClinicalHistory
     {
         $fecha = Carbon::parse($consulta['fecha']);
 
@@ -242,8 +271,14 @@ class DemostracionSeeder extends Seeder
             $this->mapeo($historia, $consulta['mapeo'], $fecha);
         }
 
+        // El anulado va antes que el bueno para que se lleve el número
+        // anterior: se emitió primero y así se lee en la serie.
+        if (isset($consulta['cobro_anulado'])) {
+            $this->apuntar($pendientes, $consulta['fecha'], $paciente, $historia, $consulta['cobro_anulado']);
+        }
+
         if (isset($consulta['cobro'])) {
-            $this->recibo($consulta['cobro'], $paciente, $historia, $consulta['fecha'], $recepcion);
+            $this->apuntar($pendientes, $consulta['fecha'], $paciente, $historia, $consulta['cobro']);
         }
 
         return $historia;
@@ -313,7 +348,7 @@ class DemostracionSeeder extends Seeder
      * @param  array<string, mixed>  $estudio
      * @param  array<int, ClinicalHistory>  $historias
      */
-    private function estudio(array $estudio, Patient $paciente, array $historias, User $medico, User $recepcion): void
+    private function estudio(array $estudio, Patient $paciente, array $historias, User $medico, User $recepcion, array &$pendientes): void
     {
         $fecha = Carbon::parse($estudio['fecha']);
 
@@ -337,8 +372,13 @@ class DemostracionSeeder extends Seeder
             'updated_by' => $medico->id,
         ]));
 
+        // El cobro del estudio no se ata a la consulta aunque el estudio sí lo
+        // esté: el módulo de cobros no deja que una consulta tenga dos
+        // documentos vigentes, y la consulta ya trae el suyo. Un Ecodöppler es
+        // de los servicios que se cobran aparte, que es justo para lo que la
+        // columna admite quedarse nula.
         if (isset($estudio['cobro'])) {
-            $this->recibo($estudio['cobro'], $paciente, $historia, $estudio['fecha'], $recepcion);
+            $this->apuntar($pendientes, $estudio['fecha'], $paciente, null, $estudio['cobro']);
         }
     }
 
@@ -375,18 +415,79 @@ class DemostracionSeeder extends Seeder
         ]);
     }
 
+    /*
+    |--------------------------------------------------------------------------
+    | Documentos de cobro
+    |--------------------------------------------------------------------------
+    */
+
     /**
-     * Recibo de la consulta, con sus renglones y sus cuentas.
+     * Apunta un cobro para emitirlo después.
+     *
+     * @param  array<int, array<string, mixed>>  $pendientes
+     * @param  array<string, mixed>  $cobro
+     */
+    private function apuntar(array &$pendientes, string $fecha, Patient $paciente, ?ClinicalHistory $historia, array $cobro): void
+    {
+        $pendientes[] = [
+            'fecha' => $fecha,
+            // Desempata a los del mismo día conservando el orden en que se
+            // apuntaron, que es el que tiene sentido: un documento anulado se
+            // emitió antes que el que lo sustituye.
+            'orden' => count($pendientes),
+            'paciente' => $paciente,
+            'historia' => $historia,
+            'cobro' => $cobro,
+        ];
+    }
+
+    /**
+     * Emite todos los cobros apuntados, en orden de fecha.
+     *
+     * @param  array<int, array<string, mixed>>  $pendientes
+     * @return int  Cuántos documentos se emitieron
+     */
+    private function emitirCobros(array $pendientes, User $recepcion): int
+    {
+        usort(
+            $pendientes,
+            fn (array $a, array $b) => [$a['fecha'], $a['orden']] <=> [$b['fecha'], $b['orden']]
+        );
+
+        foreach ($pendientes as $pendiente) {
+            $this->documento(
+                $pendiente['cobro'],
+                $pendiente['paciente'],
+                $pendiente['historia'],
+                $pendiente['fecha'],
+                $recepcion
+            );
+        }
+
+        return count($pendientes);
+    }
+
+    /**
+     * Un documento de cobro, con sus renglones y sus cuentas.
      *
      * Los totales se calculan con la misma clase que usa el módulo de cobros,
      * y no a mano: un recibo de muestra con el IVA mal desglosado es lo primero
      * que alguien va a comprobar con una calculadora.
      *
+     * Una factura se manda a certificar por el mismo camino que la del módulo
+     * —el contrato Certificador— en vez de rellenar a mano las columnas del
+     * régimen FEL. Hoy no hay certificador contratado y vuelve «Pendiente» con
+     * su explicación, así que la muestra se imprime con la leyenda
+     * «SIN CERTIFICAR», que es lo que la clínica va a emitir hasta que esa API
+     * exista. Inventar aquí un número de autorización daría una factura de
+     * muestra con aspecto de válida sin serlo.
+     *
      * @param  array<string, mixed>  $cobro
      */
-    private function recibo(array $cobro, Patient $paciente, ?ClinicalHistory $historia, string $fecha, User $recepcion): void
+    private function documento(array $cobro, Patient $paciente, ?ClinicalHistory $historia, string $fecha, User $recepcion): void
     {
         $iva = (float) config('facturacion.iva_porcentaje', 12);
+        $esFactura = ($cobro['tipo'] ?? Invoice::TIPO_RECIBO) === Invoice::TIPO_FACTURA;
 
         $renglones = array_map(
             fn (array $renglon) => $renglon + ['tipo' => 'S', 'descuento' => 0],
@@ -395,17 +496,19 @@ class DemostracionSeeder extends Seeder
 
         $cuentas = Totales::calcular($renglones, $iva);
 
-        $factura = Invoice::create([
+        $documento = Invoice::create([
             'patient_id' => $paciente->id,
             'clinical_history_id' => $historia?->id,
             'created_by' => $recepcion->id,
-            'tipo' => Invoice::TIPO_RECIBO,
+            'tipo' => $esFactura ? Invoice::TIPO_FACTURA : Invoice::TIPO_RECIBO,
             'serie' => self::SERIE,
             'numero' => Invoice::siguienteNumero(self::SERIE),
             'fecha_emision' => $fecha,
             'nit_receptor' => $cobro['nit'] ?? Invoice::NIT_CONSUMIDOR_FINAL,
-            'nombre_receptor' => $paciente->nombre,
-            'direccion_receptor' => $paciente->lugar_residencia,
+            // Quien paga no siempre es quien se atiende: cuando el receptor es
+            // otro, el documento lo dice y además nombra al paciente.
+            'nombre_receptor' => $cobro['receptor'] ?? $paciente->nombre,
+            'direccion_receptor' => $cobro['direccion'] ?? $paciente->lugar_residencia,
             'moneda' => config('facturacion.moneda', 'GTQ'),
             'subtotal' => $cuentas['subtotal'],
             'descuento' => $cuentas['descuento'],
@@ -415,10 +518,58 @@ class DemostracionSeeder extends Seeder
             'metodo_pago' => $cobro['metodo_pago'] ?? 'Efectivo',
             'estado' => 'Emitida',
             'observaciones' => $cobro['observaciones'] ?? null,
+            'fel_estado' => $esFactura ? 'Pendiente' : 'No aplica',
         ]);
 
         foreach ($cuentas['renglones'] as $renglon) {
-            InvoiceItem::create(['invoice_id' => $factura->id] + $renglon);
+            InvoiceItem::create(['invoice_id' => $documento->id] + $renglon);
         }
+
+        if ($esFactura) {
+            $resultado = app(Certificador::class)->certificar($documento);
+
+            $documento->update([
+                'fel_estado' => $resultado['estado'],
+                'fel_uuid' => $resultado['uuid'],
+                'fel_serie' => $resultado['serie'],
+                'fel_numero' => $resultado['numero'],
+                'fel_certificador' => $resultado['certificador'],
+                'fel_mensaje' => $resultado['mensaje'],
+                'fel_certificado_at' => $resultado['estado'] === 'Certificada' ? now() : null,
+            ]);
+        }
+
+        $this->fechar($documento, $fecha, $cobro['anulacion'] ?? null);
+    }
+
+    /**
+     * Deja el documento fechado como si se hubiera emitido ese día, y anulado
+     * si le tocaba.
+     *
+     * Las marcas de tiempo se ponen a mano porque el reporte del documento
+     * anulado imprime la fecha de la anulación leyendo `updated_at`: si se
+     * queda con la de la siembra, un recibo de mayo dice que se anuló hoy.
+     *
+     * @param  array{dias: int, motivo: string}|null  $anulacion
+     */
+    private function fechar(Invoice $documento, string $fecha, ?array $anulacion): void
+    {
+        $emision = Carbon::parse($fecha)->setTime(12, 0);
+
+        $documento->timestamps = false;
+
+        if ($anulacion !== null) {
+            $documento->estado = 'Anulada';
+            $documento->motivo_anulacion = $anulacion['motivo'];
+        }
+
+        $documento->created_at = $emision;
+        $documento->updated_at = $anulacion !== null
+            ? Carbon::today()->subDays($anulacion['dias'])->setTime(12, 30)
+            : $emision;
+
+        $documento->save();
+
+        $documento->timestamps = true;
     }
 }
