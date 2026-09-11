@@ -56,7 +56,11 @@ Route::prefix('v1')->group(function () {
         // informes y el NIT de los recibos.
         Route::get('/ajustes', [AjusteController::class, 'index']);
 
-        Route::middleware('role:administrador')->group(function () {
+        // También el médico, con el mismo criterio que el horario de atención:
+        // en esta clínica quien atiende es quien la dirige, y el membrete y el
+        // colegiado que firman los informes son suyos. Recepción no: de aquí
+        // salen el NIT y la serie de los recibos.
+        Route::middleware('role:administrador,medico')->group(function () {
             Route::put('/ajustes', [AjusteController::class, 'update']);
             Route::post('/ajustes/logo', [AjusteController::class, 'storeLogo']);
         });
@@ -89,12 +93,12 @@ Route::prefix('v1')->group(function () {
             ->middleware('role:administrador');
 
         // Catálogo de servicios y tarifas. Lo lee quien cobra, porque de aquí
-        // se llenan los renglones del recibo; lo mantiene el administrador,
-        // porque un precio no se corrige desde el mostrador con un paciente
-        // delante.
+        // se llenan los renglones del recibo; lo mantienen la administración y
+        // el médico, que son quienes ponen el precio. Recepción no: una tarifa
+        // no se corrige en el mostrador con un paciente delante.
         Route::get('/services', [ServiceController::class, 'index']);
 
-        Route::middleware('role:administrador')->group(function () {
+        Route::middleware('role:administrador,medico')->group(function () {
             Route::post('/services', [ServiceController::class, 'store']);
             Route::put('/services/{service}', [ServiceController::class, 'update']);
             Route::patch('/services/{service}', [ServiceController::class, 'update']);

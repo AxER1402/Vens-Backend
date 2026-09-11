@@ -65,11 +65,18 @@ class UserController extends Controller
      * mostrador. Por eso devuelve el nombre y nada más: ni el correo, ni el
      * teléfono, ni si la cuenta está activa; para elegir un médico en una
      * lista no hace falta saber nada de eso.
+     *
+     * Solo el rol `medico`. Antes entraba también el administrador, y el
+     * selector de «Médico tratante» ofrecía elegir a quien lleva las cuentas
+     * del sistema para atender una cita. Quien administra y quien atiende son
+     * cosas distintas aunque a veces coincidan en la misma persona: si la
+     * doctora además administra, su cuenta se crea con rol `medico` y otra
+     * aparte para administrar, que es lo que deja la agenda legible.
      */
     public function medicos(): JsonResponse
     {
         $medicos = User::select('id', 'name', 'rol')
-            ->whereIn('rol', ['medico', 'administrador'])
+            ->where('rol', 'medico')
             ->where('activo', true)
             ->orderBy('name')
             ->get();
