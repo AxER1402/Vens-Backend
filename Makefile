@@ -39,7 +39,7 @@ NC     = \033[0m # Sin color
         migrate-fresh seed tinker test cache-clear key-generate \
         composer-install artisan queue-work logs-vite npm restart-vite \
         prod-build prod-up prod-down prod-logs prod-shell prod-ps prod-key \
-        prod-reset prod-seed prod-db
+        prod-reset prod-seed prod-db demo-seed
 
 # ── Ayuda ─────────────────────────────────────────────────────────────────────
 # Ejecutar solo "make" muestra esta ayuda
@@ -70,6 +70,7 @@ help:
 	@echo "  $(GREEN)make migrate-fresh$(NC)   Reset completo + re-ejecutar migraciones"
 	@echo "  $(GREEN)make seed$(NC)            Ejecutar seeders (datos de prueba)"
 	@echo "  $(GREEN)make migrate-seed$(NC)    Reset + migraciones + seeders"
+	@echo "  $(GREEN)make demo-seed$(NC)       Sembrar los expedientes de demostración"
 	@echo "  $(GREEN)make tinker$(NC)          Abrir REPL interactivo de Laravel"
 	@echo "  $(GREEN)make cache-clear$(NC)     Limpiar todos los cachés de Laravel"
 	@echo "  $(GREEN)make storage-link$(NC)    Crear symlink para archivos públicos"
@@ -225,6 +226,17 @@ migrate-seed:
 	@read -p "¿Continuar? [s/N]: " confirm && [ "$$confirm" = "s" ] || exit 1
 	$(COMPOSE) exec -u www-data $(PHP_SERVICE) php artisan migrate:fresh --seed
 	@echo "$(GREEN)✔ BD configurada con datos de prueba$(NC)"
+
+# Sembrar los seis expedientes de demostración: pacientes con su historia, su
+# Ecodöppler, su mapeo venoso, sus recibos y sus citas, con valores clínicos
+# coherentes, para poder imprimir los informes y enseñarlos.
+#
+# No borra nada más que lo suyo: si ya estaban sembrados, los rehace. El resto
+# de pacientes de la base se queda como está.
+demo-seed:
+	@echo "$(YELLOW)🩺 Sembrando expedientes de demostración...$(NC)"
+	$(COMPOSE) exec -u www-data $(PHP_SERVICE) php artisan db:seed --class=DemostracionSeeder
+	@echo "$(GREEN)✔ Expedientes listos — imprímalos desde la pantalla de Reportes$(NC)"
 
 # Abrir Tinker: REPL interactivo de Laravel (como una consola PHP con acceso a tu app)
 # Útil para probar consultas Eloquent, modelos, etc.
