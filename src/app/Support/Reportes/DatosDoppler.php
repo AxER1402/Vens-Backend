@@ -180,13 +180,16 @@ class DatosDoppler
                 continue;
             }
 
+            // El diámetro va al final, detrás de las observaciones, y no
+            // pegado al diámetro máximo: son dos medidas distintas y juntas se
+            // leían como una sola columna partida en dos.
             $filas[] = [
                 Formato::valor($nombre),
                 Formato::numero($medidas[0]),
                 Formato::numero($medidas[1]),
                 Formato::numero($medidas[2]),
-                Formato::numero($medidas[3]),
                 Formato::valor($observaciones),
+                Formato::numero($medidas[3]),
             ];
         }
 
@@ -197,9 +200,12 @@ class DatosDoppler
         return [
             'tipo' => 'tabla',
             'titulo' => null,
-            'encabezados' => ['Segmento', 'Ø Máx (mm)', 'Velocidad (cm/s)', 'Reflujo (s)', 'Ø (mm)', 'Observaciones'],
+            // «Diámetro» con todas sus letras: el símbolo Ø solo se reconoce
+            // si ya se sabe qué dice, y en una hoja impresa no hay dónde
+            // preguntarlo.
+            'encabezados' => ['Segmento', 'Ø Máx (mm)', 'Velocidad (cm/s)', 'Reflujo (s)', 'Observaciones', 'Diámetro (mm)'],
             'filas' => $filas,
-            'anchos' => [20, 12, 14, 11, 10, 33],
+            'anchos' => [19, 12, 13, 11, 32, 13],
         ];
     }
 }
