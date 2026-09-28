@@ -2,11 +2,12 @@
 # docker-compose.prod.yml — Despliegue de PRODUCCIÓN
 # Centro Médico de Flebología — Vens
 # =============================================================================
-# Tres contenedores, no seis:
+# Cuatro contenedores, no seis:
 #
 #   app    → Nginx + PHP-FPM + la SPA compilada + Laravel   (imagen unificada)
 #   mysql  → base de datos
 #   redis  → caché, sesiones y colas
+#   whatsapp → WhatsApp Web para los recordatorios de citas
 #
 # Diferencias con docker-compose.yml (desarrollo):
 #   - El frontend ya no es un contenedor: se compila dentro de la imagen y
@@ -75,6 +76,7 @@ services:
       DB_PORT: 3306
       REDIS_HOST: redis
       REDIS_PORT: 6379
+      WHATSAPP_URL: http://whatsapp:3000
 
       # Los logs de Laravel salen por la salida estándar del contenedor, que
       # es donde Docker los recoge: docker compose logs -f app
@@ -165,6 +167,30 @@ services:
       retries: 5
       start_period: 10s
 
+  # ────────────────────────────────────────────────────────────────────────────
+  # SERVICIO: whatsapp — recordatorios de citas por WhatsApp Web
+  # ────────────────────────────────────────────────────────────────────────────
+  whatsapp:
+    build:
+      context: ./docker/whatsapp
+
+    image: vens-whatsapp:latest
+    container_name: vens_prod_whatsapp
+
+    # Sin "ports": solo le habla "app", por la red interna.
+
+    environment:
+      WHATSAPP_TOKEN: ${WHATSAPP_TOKEN:?Defina WHATSAPP_TOKEN en .env.prod}
+      TZ: America/Guatemala
+
+    volumes:
+      - whatsapp_sesion:/sesion
+
+    restart: unless-stopped
+
+    networks:
+      - vens_network
+
 # =============================================================================
 # VOLÚMENES
 # Nombres distintos a los de desarrollo, para no mezclar por accidente los
@@ -177,6 +203,8 @@ volumes:
     name: vens_prod_redis_data
   storage_publico:
     name: vens_prod_storage
+  whatsapp_sesion:
+    name: vens_prod_whatsapp_sesion
 
 networks:
   vens_network:

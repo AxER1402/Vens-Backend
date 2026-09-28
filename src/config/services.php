@@ -28,6 +28,15 @@ return [
         'region' => env('AWS_DEFAULT_REGION', 'us-east-1'),
     ],
 
+    // El servicio de WhatsApp Web (docker/whatsapp) que manda los
+    // recordatorios de citas. Si activarlos o no se decide en la pantalla de
+    // configuración; aquí solo está cómo llegar a él.
+    'whatsapp' => [
+        'url' => env('WHATSAPP_URL', 'http://whatsapp:3000'),
+        'token' => env('WHATSAPP_TOKEN'),
+        'codigo_pais' => env('WHATSAPP_CODIGO_PAIS', '502'),
+    ],
+
     'slack' => [
         'notifications' => [
             'bot_user_oauth_token' => env('SLACK_BOT_USER_OAUTH_TOKEN'),

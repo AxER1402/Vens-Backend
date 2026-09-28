@@ -64,6 +64,11 @@ class Ajustes
         // días y tiene su propia pantalla y su propia validación.
         'agenda.horario' => ['tipo' => 'horario', 'editable' => false, 'default' => []],
         'agenda.duracion_cita' => ['tipo' => 'entero', 'editable' => false, 'default' => 30],
+
+        // ── WhatsApp ──
+        // Apagado de fábrica: mandar mensajes a los pacientes desde el número
+        // de la clínica es algo que alguien tiene que decidir encenderlo.
+        'whatsapp.recordatorios' => ['tipo' => 'booleano', 'editable' => false, 'default' => false],
     ];
 
     /**

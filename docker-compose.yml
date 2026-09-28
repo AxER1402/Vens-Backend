@@ -10,6 +10,7 @@
 #   mysql        Base de datos
 #   redis        Caché, sesiones y colas
 #   phpmyadmin   Administrador visual de la BD  →  http://localhost:8080
+#   whatsapp     WhatsApp Web para los recordatorios de citas (solo interno)
 #
 # TODO se abre en http://localhost:8000 — la pantalla y la API comparten
 # dirección. El puerto 5173 ya no se usa.
@@ -217,6 +218,36 @@ services:
       mysql:
         condition: service_healthy
 
+  # ────────────────────────────────────────────────────────────────────────────
+  # SERVICIO: whatsapp (Recordatorios de citas por WhatsApp Web)
+  # ────────────────────────────────────────────────────────────────────────────
+  # Un Chromium sin ventana con WhatsApp Web abierto. Laravel le pide por HTTP
+  # que mande los recordatorios; el teléfono de la clínica se vincula
+  # escaneando el QR desde Configuración → WhatsApp.
+  #
+  # No publica puertos: solo lo usa "app", por la red interna.
+  #
+  # Logs:  docker-compose logs -f whatsapp
+  whatsapp:
+    build:
+      context: ./docker/whatsapp
+
+    container_name: vens_whatsapp
+
+    environment:
+      WHATSAPP_TOKEN: ${WHATSAPP_TOKEN:-whatsapp_vens_2024}
+      TZ: America/Guatemala
+
+    volumes:
+      # La sesión vinculada: sin esto habría que escanear el QR otra vez
+      # cada vez que se reinicia el contenedor.
+      - whatsapp_sesion:/sesion
+
+    restart: unless-stopped
+
+    networks:
+      - vens_network
+
 # =============================================================================
 # VOLÚMENES NOMBRADOS
 # Los volúmenes nombrados persisten datos entre reinicios de contenedores.
@@ -241,6 +272,10 @@ volumes:
   # Dependencias de Node/npm del frontend (misma razón)
   node_modules_data:
     name: vens_node_modules_data
+
+  # Sesión de WhatsApp Web (el teléfono vinculado)
+  whatsapp_sesion:
+    name: vens_whatsapp_sesion
 
 # =============================================================================
 # REDES

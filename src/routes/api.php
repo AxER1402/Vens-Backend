@@ -16,6 +16,7 @@ use App\Http\Controllers\Api\ReportePeriodoController;
 use App\Http\Controllers\Api\ServiceController;
 use App\Http\Controllers\Api\UserController;
 use App\Http\Controllers\Api\VenousMapCatalogController;
+use App\Http\Controllers\Api\WhatsAppController;
 use App\Http\Middleware\AnunciaVencimientoDeSesion;
 use Illuminate\Support\Facades\Route;
 
@@ -70,6 +71,16 @@ Route::prefix('v1')->group(function () {
         // quien atiende.
         Route::put('/ajustes/agenda', [AjusteController::class, 'updateAgenda'])
             ->middleware('role:administrador,medico');
+
+        // Recordatorios de citas por WhatsApp. Del administrador y del médico,
+        // con el mismo criterio que el horario: son avisos de su agenda, y se
+        // mandan desde el número de la clínica. Hasta mirar el estado es suyo:
+        // la respuesta lleva el QR con el que se vincula el teléfono.
+        Route::middleware('role:administrador,medico')->group(function () {
+            Route::get('/whatsapp', [WhatsAppController::class, 'index']);
+            Route::put('/whatsapp', [WhatsAppController::class, 'update']);
+            Route::post('/whatsapp/cerrar-sesion', [WhatsAppController::class, 'cerrarSesion']);
+        });
 
         // El personal al que se le asigna una cita o un informe. Va aparte de
         // la gestión de usuarios —y antes, para que /users/{user} no se lo

@@ -41,7 +41,25 @@ class Appointment extends Model
         return [
             'fecha_hora_inicio' => 'datetime:Y-m-d H:i:s',
             'fecha_hora_fin' => 'datetime:Y-m-d H:i:s',
+            'recordatorio_at' => 'datetime',
         ];
+    }
+
+    /**
+     * Una cita que cambia de hora necesita un recordatorio nuevo.
+     *
+     * El que ya salió anunciaba la hora vieja: si se reagenda para otro día,
+     * el paciente tiene que recibir el aviso de la nueva, así que se olvida
+     * que ya se le mandó uno.
+     */
+    protected static function booted(): void
+    {
+        static::updating(function (Appointment $cita) {
+            if ($cita->isDirty('fecha_hora_inicio')) {
+                $cita->recordatorio_at = null;
+                $cita->recordatorio_resultado = null;
+            }
+        });
     }
 
     /**
