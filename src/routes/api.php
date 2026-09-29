@@ -180,6 +180,7 @@ Route::prefix('v1')->group(function () {
         Route::middleware('role:administrador,medico,recepcionista')->group(function () {
             Route::post('/invoices', [InvoiceController::class, 'store']);
             Route::patch('/invoices/{invoice}/anular', [InvoiceController::class, 'anular']);
+            Route::post('/invoices/{invoice}/certificar', [InvoiceController::class, 'certificar']);
         });
 
         // Avisos del campanario: los pacientes que vienen en lo que queda de hoy

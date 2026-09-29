@@ -8,6 +8,7 @@ use App\Models\ClinicalHistory;
 use App\Models\Invoice;
 use App\Support\Facturacion\Certificador;
 use App\Support\Facturacion\DatosDocumento;
+use App\Support\Facturacion\GeneradorFactura;
 use App\Support\Facturacion\Totales;
 use App\Support\Listados\Pagina;
 use App\Support\Reportes\Emision;
@@ -134,21 +135,10 @@ class InvoiceController extends Controller
             return $documento;
         });
 
-        // Una factura además se manda a certificar. Hoy no hay certificador
-        // contratado y vuelve «Pendiente»; el documento ya quedó guardado, así
-        // que no se pierde nada mientras tanto.
+        // Una factura además se manda a certificar. Si el certificador no
+        // responde, el documento ya quedó guardado y puede certificarse después.
         if ($documento->tipo === Invoice::TIPO_FACTURA) {
-            $resultado = $this->certificador->certificar($documento);
-
-            $documento->update([
-                'fel_estado' => $resultado['estado'],
-                'fel_uuid' => $resultado['uuid'],
-                'fel_serie' => $resultado['serie'],
-                'fel_numero' => $resultado['numero'],
-                'fel_certificador' => $resultado['certificador'],
-                'fel_mensaje' => $resultado['mensaje'],
-                'fel_certificado_at' => $resultado['estado'] === 'Certificada' ? now() : null,
-            ]);
+            $this->mandarACertificar($documento);
         }
 
         $documento->load(['items', 'patient:id,nombre,telefono']);
@@ -160,6 +150,57 @@ class InvoiceController extends Controller
                 : "Recibo {$documento->correlativo} emitido.",
             'data' => $documento,
         ], 201);
+    }
+
+    /**
+     * Certificar una factura que quedó pendiente.
+     *
+     * Es la vía para las facturas emitidas cuando no había certificador: el
+     * documento no se toca, solo se le llenan los datos de la autorización.
+     */
+    public function certificar(Invoice $invoice): JsonResponse
+    {
+        $motivo = match (true) {
+            $invoice->tipo !== Invoice::TIPO_FACTURA => 'Un recibo no se certifica: solo las facturas van a la SAT.',
+            $invoice->estado === 'Anulada' => 'El documento está anulado y ya no se puede certificar.',
+            $invoice->fel_estado === 'Certificada' => 'La factura ya estaba certificada.',
+            default => null,
+        };
+
+        if ($motivo !== null) {
+            return response()->json(['success' => false, 'message' => $motivo], 422);
+        }
+
+        $this->mandarACertificar($invoice);
+
+        if ($invoice->fel_estado === 'Certificada') {
+            Bitacora::registrar(
+                'factura_certificada',
+                "Certificó la factura {$invoice->correlativo} (autorización {$invoice->fel_uuid}).",
+                $invoice,
+            );
+        }
+
+        return response()->json([
+            'success' => $invoice->fel_estado === 'Certificada',
+            'message' => (string) $invoice->fel_mensaje,
+            'data' => $invoice->fresh(['items']),
+        ], $invoice->fel_estado === 'Certificada' ? 200 : 422);
+    }
+
+    private function mandarACertificar(Invoice $documento): void
+    {
+        $resultado = $this->certificador->certificar($documento);
+
+        $documento->update([
+            'fel_estado' => $resultado['estado'],
+            'fel_uuid' => $resultado['uuid'],
+            'fel_serie' => $resultado['serie'],
+            'fel_numero' => $resultado['numero'],
+            'fel_certificador' => $resultado['certificador'],
+            'fel_mensaje' => $resultado['mensaje'],
+            'fel_certificado_at' => $resultado['estado'] === 'Certificada' ? now() : null,
+        ]);
     }
 
     /**
@@ -218,6 +259,18 @@ class InvoiceController extends Controller
         }
 
         $invoice->load(['items', 'patient', 'creator']);
+
+        // Una factura certificada sale con la forma de la FEL de la SAT; en Word
+        // no hay esa versión y sale con el membrete de siempre.
+        if ($formato === 'pdf' && $invoice->tipo === Invoice::TIPO_FACTURA && $invoice->fel_estado === 'Certificada') {
+            return Emision::entregar(
+                (new GeneradorFactura)->generar($invoice),
+                'pdf',
+                'factura',
+                $invoice->patient?->nombre,
+                $invoice->fecha_emision,
+            );
+        }
 
         return Emision::descargar((new DatosDocumento($invoice))->construir(), $formato);
     }

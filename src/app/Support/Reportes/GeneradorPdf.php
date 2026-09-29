@@ -85,7 +85,7 @@ class GeneradorPdf
             'margin_footer' => $pagina['margen_pie'],
             // El contenedor corre como www-data: el temporal va dentro de
             // storage/, que ya es escribible, y no en el /tmp de la imagen.
-            'tempDir' => $this->directorioTemporal(),
+            'tempDir' => self::directorioTemporal(),
         ]);
     }
 
@@ -108,7 +108,7 @@ class GeneradorPdf
         return is_file($ruta) ? $ruta : null;
     }
 
-    private function directorioTemporal(): string
+    public static function directorioTemporal(): string
     {
         $dir = config('reportes.temp_dir');
 

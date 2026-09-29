@@ -55,12 +55,22 @@ class Emision
             ? (new GeneradorWord)->generar($doc)
             : (new GeneradorPdf)->generar($doc);
 
-        $nombre = Formato::nombreArchivo(
+        return self::entregar(
+            $contenido,
+            $formato,
             $doc['archivo'],
             $doc['nombre_archivo_base'] ?? null,
             $doc['fecha_archivo'] ?? null,
-            $formato
         );
+    }
+
+    /**
+     * Entregar como descarga un documento que ya viene renderizado, para los
+     * que no salen de la plantilla común —la factura electrónica—.
+     */
+    public static function entregar(string $contenido, string $formato, string $archivo, ?string $base, mixed $fecha): StreamedResponse
+    {
+        $nombre = Formato::nombreArchivo($archivo, $base, $fecha, $formato);
 
         return response()->streamDownload(
             fn () => print ($contenido),

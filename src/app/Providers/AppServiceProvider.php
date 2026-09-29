@@ -5,6 +5,7 @@ namespace App\Providers;
 use App\Support\Ajustes\Ajustes;
 use App\Support\Facturacion\Certificador;
 use App\Support\Facturacion\CertificadorPendiente;
+use App\Support\Facturacion\CertificadorInterno;
 use App\Support\Sesion\VencimientoDeSesion;
 use Illuminate\Support\ServiceProvider;
 use Laravel\Sanctum\PersonalAccessToken;
@@ -18,9 +19,12 @@ class AppServiceProvider extends ServiceProvider
     public function register(): void
     {
         // Quién certifica las facturas ante la SAT. Mientras no haya API
-        // contratada responde el que no certifica nada y deja el documento
-        // pendiente; el día que se contrate, esta línea es lo único que cambia.
-        $this->app->bind(Certificador::class, CertificadorPendiente::class);
+        // contratada certifica el propio sistema, o se deja el documento pendiente;
+        // el día que se contrate, aquí es lo único que cambia.
+        $this->app->bind(Certificador::class, fn () => match (config('facturacion.certificacion')) {
+            'pendiente' => new CertificadorPendiente,
+            default => new CertificadorInterno,
+        });
     }
 
     /**

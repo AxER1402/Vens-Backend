@@ -7,6 +7,7 @@ use App\Models\Invoice;
 use App\Models\Patient;
 use App\Models\User;
 use App\Support\Facturacion\Cantidad;
+use App\Support\Facturacion\GeneradorFactura;
 use App\Support\Facturacion\DatosDocumento;
 use App\Support\Reportes\Estadisticos\IngresosPorPeriodo;
 use App\Support\Reportes\Estadisticos\Periodo;
@@ -198,6 +199,8 @@ class FacturacionTest extends TestCase
 
     public function test_la_factura_queda_pendiente_de_certificar_y_no_finge_estarlo(): void
     {
+        config(['facturacion.certificacion' => 'pendiente']);
+
         $respuesta = $this->actingAs($this->recepcionista(), 'sanctum')
             ->postJson('/api/v1/invoices', $this->cobro([
                 'tipo' => Invoice::TIPO_FACTURA,
@@ -208,6 +211,84 @@ class FacturacionTest extends TestCase
         $respuesta->assertJsonPath('data.fel_estado', 'Pendiente');
         $this->assertNull($respuesta->json('data.fel_uuid'), 'Sin certificador no se inventa número de autorización.');
         $this->assertStringContainsString('certificador', (string) $respuesta->json('data.fel_mensaje'));
+    }
+
+    public function test_la_certificacion_genera_autorizacion_serie_y_numero_de_dte(): void
+    {
+        config(['facturacion.certificacion' => 'interna']);
+
+        $datos = $this->actingAs($this->recepcionista(), 'sanctum')
+            ->postJson('/api/v1/invoices', $this->cobro([
+                'tipo' => Invoice::TIPO_FACTURA,
+                'nit_receptor' => '1234567-8',
+            ]))
+            ->assertStatus(201)
+            ->assertJsonPath('data.fel_estado', 'Certificada')
+            ->json('data');
+
+        // UUID en mayúsculas; la serie son sus 8 primeros caracteres y el
+        // número de DTE los 16 siguientes leídos como hexadecimal.
+        $this->assertMatchesRegularExpression('/^[0-9A-F]{8}(-[0-9A-F]{4}){3}-[0-9A-F]{12}$/', $datos['fel_uuid']);
+        [$serie, $a, $b] = explode('-', $datos['fel_uuid']);
+        $this->assertSame($serie, $datos['fel_serie']);
+        $this->assertSame((string) hexdec($a.$b), $datos['fel_numero']);
+
+        $this->assertSame(config('facturacion.certificador.nombre'), $datos['fel_certificador']);
+        $this->assertNotNull($datos['fel_certificado_at']);
+    }
+
+    public function test_una_factura_pendiente_se_puede_certificar_despues(): void
+    {
+        $recepcion = $this->recepcionista();
+
+        config(['facturacion.certificacion' => 'pendiente']);
+        $factura = $this->actingAs($recepcion, 'sanctum')
+            ->postJson('/api/v1/invoices', $this->cobro(['tipo' => Invoice::TIPO_FACTURA, 'nit_receptor' => 'CF']))
+            ->json('data');
+
+        config(['facturacion.certificacion' => 'interna']);
+        $this->actingAs($recepcion, 'sanctum')
+            ->postJson("/api/v1/invoices/{$factura['id']}/certificar")
+            ->assertStatus(200)
+            ->assertJsonPath('data.fel_estado', 'Certificada');
+
+        // Dos veces no: la autorización ya quedó puesta.
+        $this->actingAs($recepcion, 'sanctum')
+            ->postJson("/api/v1/invoices/{$factura['id']}/certificar")
+            ->assertStatus(422);
+    }
+
+    public function test_un_recibo_no_se_certifica(): void
+    {
+        $recepcion = $this->recepcionista();
+        $recibo = $this->actingAs($recepcion, 'sanctum')
+            ->postJson('/api/v1/invoices', $this->cobro())->json('data');
+
+        $this->actingAs($recepcion, 'sanctum')
+            ->postJson("/api/v1/invoices/{$recibo['id']}/certificar")
+            ->assertStatus(422);
+    }
+
+    public function test_la_factura_certificada_se_imprime_con_la_forma_de_la_fel(): void
+    {
+        config(['facturacion.certificacion' => 'interna']);
+        $recepcion = $this->recepcionista();
+
+        $factura = $this->actingAs($recepcion, 'sanctum')
+            ->postJson('/api/v1/invoices', $this->cobro(['tipo' => Invoice::TIPO_FACTURA, 'nit_receptor' => '1234567-8']))
+            ->json('data');
+
+        $pdf = $this->actingAs($recepcion, 'sanctum')
+            ->get("/api/v1/invoices/{$factura['id']}/reporte?formato=pdf")
+            ->assertStatus(200);
+        $this->assertStringStartsWith('%PDF', $pdf->streamedContent());
+
+        // El IVA de cada renglón se desglosa con seis decimales, y el de los
+        // totales es la suma de los renglones: 350 → 37.500000; 750 → 80.357143.
+        $datos = (new GeneradorFactura)->datos(Invoice::with('items')->find($factura['id']));
+        $this->assertSame(['37.500000', '80.357143'], array_column($datos['renglones'], 'iva'));
+        $this->assertSame('117.857143', $datos['totales']['iva']);
+        $this->assertStringContainsString($factura['fel_uuid'], $datos['qr']);
     }
 
     public function test_el_recibo_no_pasa_por_el_regimen_electronico(): void

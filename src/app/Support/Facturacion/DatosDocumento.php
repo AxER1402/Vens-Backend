@@ -39,9 +39,11 @@ class DatosDocumento
             // avisan de lo contrario: un anulado y una factura sin certificar
             // se imprimen porque hacen falta para el archivo, pero no pueden
             // salir a la calle con aspecto de documento válido.
-            'marca_agua' => $anulado
-                ? 'ANULADA'
-                : ($sinCertificar ? 'SIN CERTIFICAR' : 'PAGADA'),
+            'marca_agua' => match (true) {
+                $anulado => 'ANULADA',
+                $sinCertificar => 'SIN CERTIFICAR',
+                default => 'PAGADA',
+            },
 
             // La cabecera de un recibo no es la ficha clínica del paciente:
             // es de quién se recibió el dinero y por cuál documento.
@@ -76,6 +78,10 @@ class DatosDocumento
             'Fecha de emisión' => Formato::fecha($this->documento->fecha_emision),
             'Método de pago' => Formato::valor($this->documento->metodo_pago),
             'NIT emisor' => Formato::hayDato($emisor['nit'] ?? null) ? $emisor['nit'] : null,
+            'Autorización SAT' => $this->documento->fel_uuid,
+            'Serie y número DTE' => $this->documento->fel_uuid
+                ? "{$this->documento->fel_serie} — {$this->documento->fel_numero}"
+                : null,
         ]);
     }
 
