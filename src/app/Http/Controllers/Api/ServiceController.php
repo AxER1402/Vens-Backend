@@ -7,6 +7,7 @@ use App\Http\Requests\Service\StoreServiceRequest;
 use App\Http\Requests\Service\UpdateServiceRequest;
 use App\Models\Service;
 use App\Support\Listados\Pagina;
+use App\Support\Auditoria\Bitacora;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
@@ -116,6 +117,13 @@ class ServiceController extends Controller
      */
     public function forceDestroy(Service $service): JsonResponse
     {
+        Bitacora::registrar(
+            'servicio_eliminado',
+            "Eliminó del catálogo el servicio {$service->nombre}.",
+            $service,
+            ['nombre' => $service->nombre, 'precio' => $service->precio],
+        );
+
         $service->delete();
 
         return response()->json([

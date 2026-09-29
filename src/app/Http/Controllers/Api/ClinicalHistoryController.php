@@ -10,6 +10,7 @@ use App\Models\ClinicalHistory;
 use App\Models\ClinicalOption;
 use App\Models\Patient;
 use App\Support\MapeoVenoso\Catalogo;
+use App\Support\Auditoria\Bitacora;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -267,6 +268,14 @@ class ClinicalHistoryController extends Controller
             'activo' => false,
             'updated_by' => auth()->id(),
         ]);
+
+        if ($clinicalHistory->wasChanged('activo')) {
+            Bitacora::registrar(
+                'historia_desactivada',
+                "Desactivó la historia clínica #{$clinicalHistory->id} de {$clinicalHistory->patient?->nombre}.",
+                $clinicalHistory,
+            );
+        }
 
         return response()->json([
             'success' => true,

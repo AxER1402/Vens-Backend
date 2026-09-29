@@ -9,6 +9,7 @@ use App\Models\Patient;
 use Illuminate\Http\JsonResponse;
 use App\Support\Contacto\Telefono;
 use App\Support\Listados\Pagina;
+use App\Support\Auditoria\Bitacora;
 use Illuminate\Http\Request;
 
 class PatientController extends Controller
@@ -117,6 +118,10 @@ class PatientController extends Controller
     {
         $patient->update(['activo' => false]);
 
+        if ($patient->wasChanged('activo')) {
+            Bitacora::registrar('paciente_desactivado', "Desactivó al paciente {$patient->nombre}.", $patient);
+        }
+
         return response()->json([
             'success' => true,
             'message' => 'Paciente desactivado exitosamente.',
@@ -141,6 +146,14 @@ class PatientController extends Controller
         $patient->update([
             'activo' => $request->boolean('activo'),
         ]);
+
+        if ($patient->wasChanged('activo')) {
+            Bitacora::registrar(
+                $patient->activo ? 'paciente_activado' : 'paciente_desactivado',
+                ($patient->activo ? 'Reactivó' : 'Desactivó')." al paciente {$patient->nombre}.",
+                $patient,
+            );
+        }
 
         $accion = $patient->activo ? 'activado' : 'desactivado';
 

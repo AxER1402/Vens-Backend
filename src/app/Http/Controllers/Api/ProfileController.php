@@ -7,6 +7,7 @@ use App\Http\Requests\Profile\StoreFotoRequest;
 use App\Http\Requests\Profile\UpdatePasswordRequest;
 use App\Http\Requests\Profile\UpdateProfileRequest;
 use App\Models\User;
+use App\Support\Auditoria\Bitacora;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
@@ -33,6 +34,17 @@ class ProfileController extends Controller
     {
         $user = $request->user();
         $user->update($request->validated());
+
+        $cambios = Bitacora::diferencias($user);
+
+        if ($cambios !== []) {
+            Bitacora::registrar(
+                'perfil_actualizado',
+                $user->name.' modificó sus datos: '.implode(', ', array_keys($cambios)).'.',
+                $user,
+                $cambios,
+            );
+        }
 
         return $this->respuesta($user, 'Sus datos se actualizaron correctamente.');
     }
@@ -68,6 +80,8 @@ class ProfileController extends Controller
                 fn ($query) => $query->where('id', '!=', $actual->getKey())
             )
             ->delete();
+
+        Bitacora::registrar('contrasena_cambiada', $user->name.' cambió su contraseña.', $user);
 
         return response()->json([
             'success' => true,

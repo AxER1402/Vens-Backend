@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Http\Requests\User\StoreUserRequest;
 use App\Http\Requests\User\UpdateUserRequest;
 use App\Models\User;
+use App\Support\Auditoria\Bitacora;
 use App\Support\Contacto\Telefono;
 use App\Support\Listados\Pagina;
 use Illuminate\Http\JsonResponse;
@@ -122,6 +123,13 @@ class UserController extends Controller
             'activo' => $validated['activo'] ?? true,
         ]);
 
+        Bitacora::registrar(
+            'usuario_creado',
+            'Creó la cuenta de '.$user->name.' ('.$user->email.') con rol '.$user->rol.'.',
+            $user,
+            ['name' => $user->name, 'email' => $user->email, 'rol' => $user->rol, 'activo' => $user->activo],
+        );
+
         return response()->json([
             'success' => true,
             'message' => 'Usuario creado exitosamente.',
@@ -153,6 +161,17 @@ class UserController extends Controller
 
         $user->update($validated);
 
+        $cambios = Bitacora::diferencias($user);
+
+        if ($cambios !== []) {
+            Bitacora::registrar(
+                'usuario_actualizado',
+                'Modificó la cuenta de '.$user->name.': '.implode(', ', array_keys($cambios)).'.',
+                $user,
+                $cambios,
+            );
+        }
+
         return response()->json([
             'success' => true,
             'message' => 'Usuario actualizado exitosamente.',
@@ -174,6 +193,10 @@ class UserController extends Controller
     public function destroy(User $user): JsonResponse
     {
         $user->update(['activo' => false]);
+
+        if ($user->wasChanged('activo')) {
+            Bitacora::registrar('usuario_desactivado', 'Desactivó la cuenta de '.$user->name.'.', $user);
+        }
 
         return response()->json([
             'success' => true,
@@ -254,6 +277,15 @@ class UserController extends Controller
         }
 
         $user->tokens()->delete();
+
+        // Se anota antes de borrar para que la fila lleve el id y el nombre.
+        Bitacora::registrar(
+            'usuario_eliminado',
+            'Eliminó definitivamente la cuenta de '.$user->name.' ('.$user->email.').',
+            $user,
+            ['name' => $user->name, 'email' => $user->email, 'rol' => $user->rol],
+        );
+
         $user->delete();
 
         return response()->json([

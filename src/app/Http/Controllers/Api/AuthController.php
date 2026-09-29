@@ -7,6 +7,7 @@ use App\Http\Requests\Auth\ForgotPasswordRequest;
 use App\Http\Requests\Auth\LoginRequest;
 use App\Http\Requests\Auth\ResetPasswordRequest;
 use App\Models\User;
+use App\Support\Auditoria\Bitacora;
 use App\Support\Sesion\VencimientoDeSesion;
 use Illuminate\Auth\Events\PasswordReset;
 use Illuminate\Http\JsonResponse;
@@ -14,6 +15,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Password;
 use Illuminate\Support\Str;
+use Laravel\Sanctum\PersonalAccessToken;
 
 class AuthController extends Controller
 {
@@ -25,6 +27,18 @@ class AuthController extends Controller
         $user = User::where('email', $request->email)->first();
 
         if (! $user || ! Hash::check($request->password, $user->password)) {
+            // Con cuenta o sin ella: una ráfaga de intentos contra un correo
+            // que no existe también es algo que el administrador quiere ver.
+            Bitacora::registrar(
+                'login_fallido',
+                $user
+                    ? 'Contraseña incorrecta para '.$user->email.'.'
+                    : 'Intento con un correo no registrado: '.$request->email.'.',
+                $user,
+                autor: $user,
+                correo: $request->email,
+            );
+
             return response()->json([
                 'success' => false,
                 'message' => 'Las credenciales proporcionadas son incorrectas.',
@@ -32,6 +46,13 @@ class AuthController extends Controller
         }
 
         if (! $user->activo) {
+            Bitacora::registrar(
+                'login_fallido',
+                'Intento de una cuenta desactivada: '.$user->email.'.',
+                $user,
+                autor: $user,
+            );
+
             return response()->json([
                 'success' => false,
                 'message' => 'El usuario se encuentra inactivo. Comuníquese con el administrador.',
@@ -51,6 +72,8 @@ class AuthController extends Controller
         // cabeceras X-Session-Expires-*.
         $tokenNuevo = $user->createToken('auth_token');
         $expiracion = VencimientoDeSesion::paraToken($tokenNuevo->accessToken);
+
+        Bitacora::registrar('login', $user->name.' inició sesión.', $user, autor: $user);
 
         return response()->json([
             'success' => true,
@@ -124,6 +147,13 @@ class AuthController extends Controller
                 // abiertas con la contraseña anterior.
                 $user->tokens()->delete();
 
+                Bitacora::registrar(
+                    'contrasena_restablecida',
+                    $user->name.' restableció su contraseña con el enlace del correo.',
+                    $user,
+                    autor: $user,
+                );
+
                 event(new PasswordReset($user));
             }
         );
@@ -150,6 +180,19 @@ class AuthController extends Controller
         $token = $request->user()?->currentAccessToken();
         
         if ($token) {
+            // Cuánto duró la sesión: del token creado al iniciarla hasta ahora.
+            $duracion = $token instanceof PersonalAccessToken && $token->created_at
+                ? (int) $token->created_at->diffInSeconds(now())
+                : null;
+
+            Bitacora::registrar(
+                'logout',
+                $request->user()->name.' cerró sesión'
+                    .($duracion !== null ? ' tras '.Bitacora::duracion($duracion) : '').'.',
+                $request->user(),
+                $duracion !== null ? ['duracion_segundos' => $duracion] : [],
+            );
+
             $token->delete();
         }
 

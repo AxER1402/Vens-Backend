@@ -8,6 +8,7 @@ use App\Http\Requests\Ajuste\UpdateAgendaRequest;
 use App\Http\Requests\Ajuste\UpdateAjustesRequest;
 use App\Support\Agenda\Horario;
 use App\Support\Ajustes\Ajustes;
+use App\Support\Auditoria\Bitacora;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\Storage;
@@ -43,7 +44,13 @@ class AjusteController extends Controller
     {
         // El formulario manda los campos agrupados ({clinica: {nombre: …}})
         // porque así se validan; en la tabla la clave es 'clinica.nombre'.
-        Ajustes::guardar(Arr::dot($request->validated()));
+        $valores = Arr::dot($request->validated());
+        Ajustes::guardar($valores);
+
+        Bitacora::registrar(
+            'ajustes_actualizados',
+            'Modificó los datos de la clínica: '.implode(', ', array_keys($valores)).'.',
+        );
 
         return response()->json([
             'success' => true,
@@ -73,6 +80,8 @@ class AjusteController extends Controller
         }
 
         Ajustes::guardar($valores);
+
+        Bitacora::registrar('horario_actualizado', 'Modificó el horario de atención o la duración de las citas.');
 
         return response()->json([
             'success' => true,

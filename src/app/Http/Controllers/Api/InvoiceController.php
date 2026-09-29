@@ -14,6 +14,7 @@ use App\Support\Reportes\Emision;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use App\Support\Reportes\Formato;
+use App\Support\Auditoria\Bitacora;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
 use Symfony\Component\HttpFoundation\StreamedResponse;
@@ -246,6 +247,13 @@ class InvoiceController extends Controller
             'estado' => 'Anulada',
             'motivo_anulacion' => $request->input('motivo_anulacion'),
         ]);
+
+        Bitacora::registrar(
+            'factura_anulada',
+            "Anuló el documento {$invoice->correlativo} ({$invoice->nombre_receptor}). Motivo: {$invoice->motivo_anulacion}",
+            $invoice,
+            ['total' => $invoice->total, 'motivo' => $invoice->motivo_anulacion],
+        );
 
         return response()->json([
             'success' => true,

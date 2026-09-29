@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\Api\AjusteController;
 use App\Http\Controllers\Api\AppointmentController;
+use App\Http\Controllers\Api\AuditoriaController;
 use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\BlockedDayController;
 use App\Http\Controllers\Api\ClinicalHistoryController;
@@ -102,6 +103,15 @@ Route::prefix('v1')->group(function () {
         // nombre, si es la de quien la pide o si es el último administrador.
         Route::delete('/users/{user}/definitivo', [UserController::class, 'forceDestroy'])
             ->middleware('role:administrador');
+
+        // Bitácora de auditoría: inicios de sesión, cambios en las cuentas y
+        // acciones sensibles. Solo del administrador y solo de lectura; las
+        // filas las escribe cada controlador al hacer la acción.
+        Route::middleware('role:administrador')->group(function () {
+            Route::get('/auditoria', [AuditoriaController::class, 'index']);
+            Route::get('/auditoria/catalogo', [AuditoriaController::class, 'catalogo']);
+            Route::get('/auditoria/resumen', [AuditoriaController::class, 'resumen']);
+        });
 
         // Catálogo de servicios y tarifas. Lo lee quien cobra, porque de aquí
         // se llenan los renglones del recibo; lo mantienen la administración y

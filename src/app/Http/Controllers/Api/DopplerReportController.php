@@ -8,6 +8,7 @@ use App\Http\Requests\DopplerReport\UpdateDopplerReportRequest;
 use App\Models\ClinicalHistory;
 use App\Models\DopplerReport;
 use App\Models\Patient;
+use App\Support\Auditoria\Bitacora;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Http\JsonResponse;
@@ -174,6 +175,14 @@ class DopplerReportController extends Controller
             'activo' => false,
             'updated_by' => auth()->id(),
         ]);
+
+        if ($dopplerReport->wasChanged('activo')) {
+            Bitacora::registrar(
+                'estudio_desactivado',
+                "Desactivó el ecodöppler #{$dopplerReport->id} de {$dopplerReport->patient?->nombre}.",
+                $dopplerReport,
+            );
+        }
 
         return response()->json([
             'success' => true,
