@@ -37,6 +37,13 @@ return [
         'codigo_pais' => env('WHATSAPP_CODIGO_PAIS', '502'),
     ],
 
+    // Inicio de sesión con Google. Solo hace falta el Client ID: el backend no
+    // habla con Google en nombre del usuario, solo comprueba que el token que
+    // trae el frontend fue emitido para esta aplicación.
+    'google' => [
+        'client_id' => env('GOOGLE_CLIENT_ID'),
+    ],
+
     'slack' => [
         'notifications' => [
             'bot_user_oauth_token' => env('SLACK_BOT_USER_OAUTH_TOKEN'),
