@@ -30,6 +30,8 @@ use Illuminate\Support\Facades\Route;
 Route::prefix('v1')->group(function () {
     // Rutas públicas de autenticación
     Route::post('/auth/login', [AuthController::class, 'login']);
+    Route::post('/auth/google', [AuthController::class, 'google'])
+        ->middleware('throttle:10,1');
 
     // Recuperación de contraseña (limitada a 5 intentos por minuto por IP)
     Route::post('/auth/forgot-password', [AuthController::class, 'forgotPassword'])
