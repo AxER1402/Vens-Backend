@@ -183,7 +183,7 @@ class DopplerReportManagementTest extends TestCase
             ->assertJsonValidationErrors('patient_id');
     }
 
-    public function test_finalizing_requires_the_conclusion(): void
+    public function test_a_report_can_be_saved_without_the_conclusion(): void
     {
         $patient = $this->paciente();
 
@@ -193,8 +193,8 @@ class DopplerReportManagementTest extends TestCase
                 'conclusion' => '',
             ]);
 
-        $response->assertStatus(422)
-            ->assertJsonValidationErrors('conclusion');
+        $response->assertStatus(201)
+            ->assertJsonPath('data.estado_registro', 'Finalizada');
     }
 
     public function test_segment_measures_must_be_non_negative_numbers(): void
@@ -327,12 +327,12 @@ class DopplerReportManagementTest extends TestCase
                 'conclusion' => 'Sistema venoso permeable.',
             ])->json('data.id');
 
-        // La conclusión guardada satisface el requisito de cierre aunque el
-        // formulario solo envíe el campo que se corrigió
+        // Una corrección parcial no toca la conclusión que ya estaba guardada
         $this->actingAs($this->medico(), 'sanctum')
             ->patchJson("/api/v1/doppler-reports/{$creado}", [
                 'der_perforantes' => 'Perforante insuficiente en tercio medio.',
-            ])->assertStatus(200);
+            ])->assertStatus(200)
+            ->assertJsonPath('data.conclusion', 'Sistema venoso permeable.');
     }
 
     public function test_reports_can_be_listed_by_patient_and_by_consultation(): void

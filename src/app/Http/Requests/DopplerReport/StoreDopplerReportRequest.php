@@ -34,14 +34,6 @@ class StoreDopplerReportRequest extends DopplerReportRequest
     }
 
     /**
-     * Estado con el que quedará el registro después de esta petición.
-     */
-    protected function estadoRegistroResultante(): string
-    {
-        return (string) $this->input('estado_registro', 'Finalizada');
-    }
-
-    /**
      * Paciente al que pertenece el estudio de esta petición.
      */
     protected function pacienteDelEstudio(): ?int

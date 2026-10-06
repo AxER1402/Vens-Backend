@@ -11,9 +11,8 @@ use Illuminate\Validation\Rule;
 /**
  * Reglas compartidas por el registro y la edición del reporte de Ecodöppler.
  *
- * Los hallazgos son opcionales por diseño: el estudio se llena mientras se
- * realiza la ecografía y puede guardarse como 'Borrador'. Al marcarlo como
- * 'Finalizada' se exige la conclusión, que es lo que se adjunta a la consulta.
+ * Los hallazgos y la conclusión son opcionales por diseño: el estudio se llena
+ * mientras se realiza la ecografía y se guarda tal como esté.
  */
 abstract class DopplerReportRequest extends FormRequest
 {
@@ -76,13 +75,12 @@ abstract class DopplerReportRequest extends FormRequest
     }
 
     /**
-     * Validaciones que dependen del expediente y del estado del registro.
+     * Validaciones que dependen del expediente.
      */
     public function withValidator(Validator $validator): void
     {
         $validator->after(function (Validator $validator) {
             $this->validarConsultaDelPaciente($validator);
-            $this->validarRequisitosDeCierre($validator);
         });
     }
 
@@ -108,39 +106,6 @@ abstract class DopplerReportRequest extends FormRequest
             );
         }
     }
-
-    /**
-     * Exigir la conclusión cuando el estudio se marca como Finalizada, porque es
-     * la interpretación que se adjunta a la consulta del expediente.
-     */
-    protected function validarRequisitosDeCierre(Validator $validator): void
-    {
-        if ($this->estadoRegistroResultante() !== 'Finalizada') {
-            return;
-        }
-
-        $conclusion = $this->conclusionResultante();
-
-        if (! is_string($conclusion) || trim($conclusion) === '') {
-            $validator->errors()->add(
-                'conclusion',
-                'Registre la conclusión del estudio para finalizar el reporte.'
-            );
-        }
-    }
-
-    /**
-     * Conclusión con la que quedará el registro después de esta petición.
-     */
-    protected function conclusionResultante(): ?string
-    {
-        return $this->input('conclusion');
-    }
-
-    /**
-     * Estado con el que quedará el registro después de esta petición.
-     */
-    abstract protected function estadoRegistroResultante(): string;
 
     /**
      * Paciente al que pertenece el estudio de esta petición.

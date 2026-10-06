@@ -30,29 +30,6 @@ class UpdateDopplerReportRequest extends DopplerReportRequest
     }
 
     /**
-     * Estado con el que quedará el registro: el que se envía o, si no viene en
-     * la petición, el que ya tenía el estudio.
-     */
-    protected function estadoRegistroResultante(): string
-    {
-        if ($this->filled('estado_registro')) {
-            return (string) $this->input('estado_registro');
-        }
-
-        return $this->reporte()?->estado_registro ?? 'Finalizada';
-    }
-
-    /**
-     * La conclusión guardada se conserva cuando la petición no la envía.
-     */
-    protected function conclusionResultante(): ?string
-    {
-        return $this->has('conclusion')
-            ? $this->input('conclusion')
-            : $this->reporte()?->conclusion;
-    }
-
-    /**
      * Paciente al que pertenece el estudio de esta petición.
      */
     protected function pacienteDelEstudio(): ?int
