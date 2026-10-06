@@ -18,6 +18,8 @@
  *   POST /enviar          { telefono, mensaje }  → { enviado: true }
  *   POST /cerrar-sesion   desvincula el teléfono y vuelve a pedir QR
  */
+const fs = require('fs');
+const path = require('path');
 const express = require('express');
 const QRCode = require('qrcode');
 const { Client, LocalAuth } = require('whatsapp-web.js');
@@ -189,7 +191,40 @@ app.post('/cerrar-sesion', async (req, res) => {
   res.json(estado);
 });
 
+/**
+ * Borrar los bloqueos que dejó el Chromium de un contenedor anterior.
+ *
+ * Chromium marca su perfil con archivos Singleton* para que dos navegadores no
+ * lo usen a la vez. Viven en el volumen de la sesión, así que sobreviven al
+ * contenedor: tras un redespliegue el Chromium nuevo los encuentra, cree que el
+ * perfil sigue en uso «en otra computadora» (el contenedor viejo) y no arranca
+ * nunca, sin QR. Al arrancar este proceso no hay ningún Chromium vivo que
+ * pueda estar usándolo, así que es seguro borrarlos.
+ */
+function liberarPerfil(directorio = '/sesion', profundidad = 2) {
+  let entradas;
+  try {
+    entradas = fs.readdirSync(directorio, { withFileTypes: true });
+  } catch {
+    return;   // Sin sesión guardada todavía: no hay nada que liberar.
+  }
+
+  for (const entrada of entradas) {
+    const ruta = path.join(directorio, entrada.name);
+
+    if (entrada.name.startsWith('Singleton')) {
+      fs.rmSync(ruta, { force: true });
+      console.log(`[whatsapp] bloqueo de un Chromium anterior eliminado: ${ruta}`);
+    } else if (entrada.isDirectory() && profundidad > 0) {
+      // Los bloqueos están en la raíz del perfil (/sesion/session): no hace
+      // falta recorrer la caché del navegador, que tiene miles de archivos.
+      liberarPerfil(ruta, profundidad - 1);
+    }
+  }
+}
+
 app.listen(PUERTO, () => {
   console.log(`[whatsapp] escuchando en el puerto ${PUERTO}`);
+  liberarPerfil();
   iniciar();
 });
