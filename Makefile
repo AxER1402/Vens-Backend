@@ -39,7 +39,7 @@ NC     = \033[0m # Sin color
         migrate-fresh seed tinker test cache-clear key-generate \
         composer-install artisan queue-work logs-vite npm restart-vite \
         prod-build prod-up prod-down prod-logs prod-shell prod-ps prod-key \
-        prod-reset prod-seed prod-db
+        prod-reset prod-seed prod-db prod-respaldo
 
 # ── Ayuda ─────────────────────────────────────────────────────────────────────
 # Ejecutar solo "make" muestra esta ayuda
@@ -389,6 +389,11 @@ prod-key:
 # variables del propio contenedor y nunca aparece en la línea de comandos.
 prod-db:
 	$(COMPOSE_PROD) exec mysql sh -c 'exec mysql -u root -p"$$MYSQL_ROOT_PASSWORD" "$$MYSQL_DATABASE"'
+
+# Respaldo de la base de datos en Cloudflare R2 ahora mismo, sin esperar al
+# de las 02:00. Ver la sección «Respaldos en Cloudflare R2» del README.
+prod-respaldo:
+	$(COMPOSE_PROD) exec -u www-data app php artisan respaldo:bd
 
 # Sembrar los catálogos de producción sin borrar nada.
 # Hace falta explícitamente porque el entrypoint migra pero NO siembra: una base

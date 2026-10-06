@@ -714,7 +714,9 @@ fuera del servidor**: sin ella los respaldos no se pueden abrir.
 Respaldo manual:
 
 ```bash
-docker compose -f docker-compose.prod.yml exec -u www-data app php artisan respaldo:bd
+make prod-respaldo
+# o, sin make:
+docker compose --env-file .env.prod -f docker-compose.prod.yml exec -u www-data app php artisan respaldo:bd
 ```
 
 Restaurar (descargue el archivo desde el panel de R2):
@@ -724,7 +726,7 @@ Restaurar (descargue el archivo desde el panel de R2):
 openssl enc -d -aes-256-cbc -pbkdf2 -iter 200000 -in vens_AAAA-MM-DD_HHMM.sql.gz.enc | gunzip > respaldo.sql
 
 # 2. Cargar en MySQL (REEMPLAZA los datos actuales)
-docker compose -f docker-compose.prod.yml exec -T mysql \
+docker compose --env-file .env.prod -f docker-compose.prod.yml exec -T mysql \
   sh -c 'mysql -uroot -p"$MYSQL_ROOT_PASSWORD" "$MYSQL_DATABASE"' < respaldo.sql
 
 # 3. Borrar el SQL en claro
