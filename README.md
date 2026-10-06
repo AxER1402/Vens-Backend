@@ -699,6 +699,38 @@ que Let's Encrypt valida el dominio.
 
 ---
 
+## 💾 Respaldos en Cloudflare R2
+
+Cada noche a las **02:00** el programador corre `php artisan respaldo:bd`:
+exporta la base de datos, la comprime, la **cifra con AES-256** y la sube al
+bucket de R2 en `respaldos/vens_AAAA-MM-DD_HHMM.sql.gz.enc`. Se conservan los
+últimos `RESPALDO_DIAS_RETENCION` días (30 por defecto). De las tablas
+temporales (caché, sesiones, tokens, colas) solo se guarda la estructura.
+
+Variables en `.env.prod`: `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`,
+`R2_BUCKET`, `R2_ENDPOINT` y `RESPALDO_CLAVE`. **Guarde `RESPALDO_CLAVE` también
+fuera del servidor**: sin ella los respaldos no se pueden abrir.
+
+Respaldo manual:
+
+```bash
+docker compose -f docker-compose.prod.yml exec -u www-data app php artisan respaldo:bd
+```
+
+Restaurar (descargue el archivo desde el panel de R2):
+
+```bash
+# 1. Descifrar y descomprimir (pide la RESPALDO_CLAVE)
+openssl enc -d -aes-256-cbc -pbkdf2 -iter 200000 -in vens_AAAA-MM-DD_HHMM.sql.gz.enc | gunzip > respaldo.sql
+
+# 2. Cargar en MySQL (REEMPLAZA los datos actuales)
+docker compose -f docker-compose.prod.yml exec -T mysql \
+  sh -c 'mysql -uroot -p"$MYSQL_ROOT_PASSWORD" "$MYSQL_DATABASE"' < respaldo.sql
+
+# 3. Borrar el SQL en claro
+rm respaldo.sql
+```
+
 ## 🔧 Solución de Problemas
 
 ### Error: Puerto ya en uso

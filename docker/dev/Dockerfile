@@ -46,6 +46,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         curl \
         nano \
         procps \
+        mariadb-client \
         nginx \
         supervisor \
     && apt-get clean \

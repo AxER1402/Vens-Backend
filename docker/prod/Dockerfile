@@ -150,6 +150,7 @@ FROM php-base AS runtime
 RUN apt-get update && apt-get install -y --no-install-recommends \
         nginx \
         supervisor \
+        mariadb-client \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 

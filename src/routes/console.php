@@ -15,3 +15,9 @@ Artisan::command('inspire', function () {
 Schedule::command('citas:recordar-whatsapp')
     ->everyMinute()
     ->withoutOverlapping();
+
+// Respaldo cifrado de la base de datos en Cloudflare R2, de madrugada para no
+// cruzarse con la consulta. Sin R2_BUCKET o RESPALDO_CLAVE no hace nada.
+Schedule::command('respaldo:bd')
+    ->dailyAt('02:00')
+    ->withoutOverlapping();
