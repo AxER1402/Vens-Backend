@@ -11,9 +11,9 @@ use Illuminate\Validation\Rule;
 /**
  * Reglas compartidas por el registro y la edición de historias clínicas.
  *
- * Los campos clínicos son opcionales por diseño: la historia se llena a lo largo
- * de la consulta y puede guardarse como 'Borrador'. Al marcarla como 'Finalizada'
- * se exigen los datos mínimos que el formulario considera indispensables.
+ * Los campos clínicos son opcionales por diseño, tanto en 'Borrador' como al
+ * marcarla 'Finalizada': el médico decide qué registra en cada consulta. Lo que
+ * se llene, eso sí, debe tener un formato válido.
  */
 abstract class ClinicalHistoryRequest extends FormRequest
 {
@@ -39,7 +39,6 @@ abstract class ClinicalHistoryRequest extends FormRequest
 
             // ── Interrogatorio y síntomas ─────────────────────────────────────
             'consulta_por' => [
-                'required_if:estado_registro,Finalizada',
                 'nullable',
                 'string',
                 Rule::in(['Estética', 'Enfermedad']),
@@ -65,7 +64,6 @@ abstract class ClinicalHistoryRequest extends FormRequest
 
             // ── Examen físico ─────────────────────────────────────────────────
             'presion_arterial' => [
-                'required_if:estado_registro,Finalizada',
                 'nullable',
                 'string',
                 'max:10',
@@ -98,7 +96,6 @@ abstract class ClinicalHistoryRequest extends FormRequest
             // ── Evolución y observaciones ─────────────────────────────────────
             'evolucion' => ['nullable', 'string', Rule::in(['Mejoría', 'Igual', 'Empeoramiento'])],
             'estado_general' => [
-                'required_if:estado_registro,Finalizada',
                 'nullable',
                 'string',
                 Rule::in([
@@ -140,7 +137,6 @@ abstract class ClinicalHistoryRequest extends FormRequest
         $validator->after(function (Validator $validator) {
             $this->validarSelecciones($validator);
             $this->validarDetalleIndicaciones($validator);
-            $this->validarRequisitosDeCierre($validator);
         });
     }
 
@@ -207,25 +203,6 @@ abstract class ClinicalHistoryRequest extends FormRequest
     }
 
     /**
-     * Exigir el diagnóstico CEAP cuando la historia se marca como Finalizada.
-     */
-    protected function validarRequisitosDeCierre(Validator $validator): void
-    {
-        if ($this->input('estado_registro') !== 'Finalizada') {
-            return;
-        }
-
-        $ceap = data_get($this->input('selecciones'), 'ceap_diagnostico', []);
-
-        if (! is_array($ceap) || $ceap === []) {
-            $validator->errors()->add(
-                'selecciones.ceap_diagnostico',
-                'Debe registrar al menos un diagnóstico CEAP para finalizar la historia clínica.'
-            );
-        }
-    }
-
-    /**
      * Custom messages for validation errors.
      *
      * @return array<string, string>
@@ -239,13 +216,11 @@ abstract class ClinicalHistoryRequest extends FormRequest
             'fecha_consulta.before_or_equal' => 'La fecha de consulta no puede ser posterior al día de hoy.',
             'estado_registro.in' => 'El estado del registro debe ser: Borrador o Finalizada.',
 
-            'consulta_por.required_if' => 'Indique el motivo de consulta para finalizar la historia clínica.',
             'consulta_por.in' => 'El motivo de consulta debe ser: Estética o Enfermedad.',
 
             'ultima_menstruacion.before_or_equal' => 'La fecha de última menstruación no puede ser futura.',
             'gestas.max' => 'El número de gestas no parece un valor válido.',
 
-            'presion_arterial.required_if' => 'Registre la presión arterial para finalizar la historia clínica.',
             'presion_arterial.regex' => 'La presión arterial debe tener el formato sistólica/diastólica (ej: 120/80).',
             'frecuencia_cardiaca.integer' => 'La frecuencia cardiaca debe ser un número entero (lpm).',
             'frecuencia_cardiaca.min' => 'La frecuencia cardiaca registrada está fuera del rango clínico válido.',
@@ -276,7 +251,6 @@ abstract class ClinicalHistoryRequest extends FormRequest
             'indicaciones_detalle.*.max' => 'El detalle de cada indicación no puede superar los 255 caracteres.',
 
             'evolucion.in' => 'La evolución debe ser: Mejoría, Igual o Empeoramiento.',
-            'estado_general.required_if' => 'Indique el estado general del paciente para finalizar la historia clínica.',
             'estado_general.in' => 'El estado general seleccionado no es válido.',
 
             'selecciones.array' => 'El formato de las listas de selección no es válido.',

@@ -151,7 +151,7 @@ class ClinicalHistoryManagementTest extends TestCase
             ->assertJsonValidationErrors('patient_id');
     }
 
-    public function test_finalizing_requires_the_minimum_clinical_data(): void
+    public function test_a_clinical_history_can_be_finalized_without_optional_clinical_data(): void
     {
         $patient = $this->paciente();
 
@@ -161,13 +161,8 @@ class ClinicalHistoryManagementTest extends TestCase
                 'estado_registro' => 'Finalizada',
             ]);
 
-        $response->assertStatus(422)
-            ->assertJsonValidationErrors([
-                'consulta_por',
-                'presion_arterial',
-                'estado_general',
-                'selecciones.ceap_diagnostico',
-            ]);
+        $response->assertStatus(201)
+            ->assertJsonPath('data.estado_registro', 'Finalizada');
     }
 
     public function test_vital_signs_are_validated_as_numbers_within_clinical_ranges(): void
