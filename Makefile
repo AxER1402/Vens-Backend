@@ -27,6 +27,9 @@ COMPOSE = docker-compose
 # que docker-compose.prod.yml interpola (contraseñas de MySQL y Redis).
 COMPOSE_PROD = docker compose --env-file .env.prod -f docker-compose.prod.yml
 
+# Compose de la demo: la misma imagen con una base de pacientes ficticios.
+COMPOSE_DEMO = docker compose --env-file .env.demo -f docker-compose.demo.yml
+
 # Colores para output legible en terminal
 GREEN  = \033[0;32m
 YELLOW = \033[1;33m
@@ -39,7 +42,8 @@ NC     = \033[0m # Sin color
         migrate-fresh seed tinker test cache-clear key-generate \
         composer-install artisan queue-work logs-vite npm restart-vite \
         prod-build prod-up prod-down prod-logs prod-shell prod-ps prod-key \
-        prod-reset prod-seed prod-db prod-respaldo
+        prod-reset prod-seed prod-db prod-respaldo \
+        demo-build demo-key demo-up demo-down demo-logs demo-ps demo-reset
 
 # ── Ayuda ─────────────────────────────────────────────────────────────────────
 # Ejecutar solo "make" muestra esta ayuda
@@ -429,3 +433,56 @@ prod-reset:
 	$(COMPOSE_PROD) exec -u www-data app php artisan cache:clear
 	@echo "$(GREEN)✔ Producción de vuelta en su estado inicial$(NC)"
 	@echo "$(YELLOW)Quedan los 4 usuarios y 4 pacientes de ejemplo del seeder.$(NC)"
+
+# =============================================================================
+# DEMOSTRACIÓN — Copia de producción con pacientes ficticios
+# =============================================================================
+# Para presentar el sistema sin enseñar datos de la clínica. Usa otro proyecto
+# de Compose, otra base y otros volúmenes: nada de esto toca producción.
+#
+# Antes de la primera vez:
+#   cp .env.demo.example .env.demo   ← y editarlo
+#   make demo-build                  ← imagen propia: vens-app:demo
+# =============================================================================
+
+# Construir la imagen de la demo. No toca vens-app:latest de producción.
+demo-build:
+	@test -f .env.demo || { echo "$(RED)✖ Falta .env.demo — cópielo de .env.demo.example$(NC)"; exit 1; }
+	$(COMPOSE_DEMO) build app
+	@echo "$(GREEN)✔ Imagen vens-app:demo construida$(NC)"
+
+# Generar una APP_KEY para pegar en .env.demo
+demo-key:
+	@echo "$(YELLOW)Copie esta línea completa en APP_KEY de .env.demo:$(NC)"
+	@docker run --rm --entrypoint php vens-app:demo artisan key:generate --show
+
+# Levantar la demo
+demo-up:
+	@test -f .env.demo || { echo "$(RED)✖ Falta .env.demo — cópielo de .env.demo.example$(NC)"; exit 1; }
+	$(COMPOSE_DEMO) up -d
+	@echo "$(GREEN)✔ Demo levantada$(NC)"
+	@echo "$(YELLOW)Si es la primera vez, siémbrela con: make demo-reset$(NC)"
+
+# Apagar la demo (sus datos se conservan; para borrarlos: make demo-down V=-v)
+demo-down:
+	$(COMPOSE_DEMO) down $(V)
+	@echo "$(GREEN)✔ Demo detenida$(NC)"
+
+demo-logs:
+	$(COMPOSE_DEMO) logs -f app
+
+demo-ps:
+	$(COMPOSE_DEMO) ps
+
+# Vaciar la base de la demo y sembrar los pacientes ficticios (DemoSeeder).
+# Se puede repetir cuantas veces haga falta, p. ej. justo antes de presentar.
+demo-reset:
+	@test -f .env.demo || { echo "$(RED)✖ Falta .env.demo — cópielo de .env.demo.example$(NC)"; exit 1; }
+	@echo "$(YELLOW)🗃  Vaciando la base de la demo...$(NC)"
+	$(COMPOSE_DEMO) exec -u www-data app php artisan migrate:fresh --force
+	@echo "$(YELLOW)🌱 Sembrando pacientes ficticios...$(NC)"
+	$(COMPOSE_DEMO) exec -u www-data app php artisan db:seed --class=DemoSeeder --force
+	$(COMPOSE_DEMO) exec -u www-data app sh -c 'rm -rf /var/www/html/storage/app/public/mapeos-venosos /var/www/html/storage/app/public/avatares'
+	$(COMPOSE_DEMO) exec -u www-data app php artisan cache:clear
+	@echo "$(GREEN)✔ Demo lista: 9 pacientes ficticios$(NC)"
+	@echo "$(YELLOW)Usuarios: admin@vens.com, medico@vens.com, recepcion@vens.com — Password123!$(NC)"

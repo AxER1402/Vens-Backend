@@ -20,8 +20,9 @@ Sistema de gestión para un centro médico especializado en Flebología.
 9. [Sesión y Vencimiento](#sesión-y-vencimiento)
 10. [Correo y Recuperación de Contraseña](#correo-y-recuperación-de-contraseña)
 11. [Despliegue a Producción](#despliegue-a-producción)
-12. [Solución de Problemas](#solución-de-problemas)
-13. [Historial de Cambios](#historial-de-cambios)
+12. [Entorno de Demostración](#entorno-de-demostración)
+13. [Solución de Problemas](#solución-de-problemas)
+14. [Historial de Cambios](#historial-de-cambios)
 
 ---
 
@@ -732,6 +733,66 @@ docker compose --env-file .env.prod -f docker-compose.prod.yml exec -T mysql \
 # 3. Borrar el SQL en claro
 rm respaldo.sql
 ```
+
+## 🎭 Entorno de Demostración
+
+Para presentar el sistema sin enseñar datos de la clínica (contrato de
+confidencialidad), se levanta en el mismo servidor una **segunda copia
+aislada** en un subdominio, p. ej. `demo.clinica-vens.com`, con 9 pacientes
+ficticios (`src/database/seeders/DemoSeeder.php`):
+
+- Citas repartidas en las semanas del **5 al 9** y del **12 al 15 de octubre de 2026**:
+  completadas, una reagendada, una cancelada y una inasistencia.
+- Historias clínicas, estudios Ecodöppler y recibos para cada consulta atendida.
+- Una paciente nueva con su primera cita el martes 20 de octubre, y dos
+  controles agendados para esa misma semana.
+
+La demo se construye con el mismo Dockerfile que producción pero en su propia
+imagen (`vens-app:demo`), con **su propia base, Redis y volúmenes**. No tiene WhatsApp, no respalda en R2, no envía correos y no
+tiene inicio con Google. Como el frontend llama a la API por ruta relativa,
+"cambiar de backend" es solo abrir la otra URL.
+
+### Levantarla
+
+```bash
+# 1. DNS: registro A  demo → IP del servidor
+
+# 2. Configuración (contraseñas propias)
+cp .env.demo.example .env.demo
+
+# 3. Imagen propia y su APP_KEY (pegarla en .env.demo)
+make demo-build
+make demo-key
+
+# 4. Arrancar y sembrar
+make demo-up
+make demo-reset          # se puede repetir: deja la demo como nueva
+```
+
+La aplicación escucha solo en `127.0.0.1:8081`. El proxy del servidor, el
+mismo que tiene el certificado del dominio real, le reenvía el subdominio.
+Con Caddy sería:
+
+```
+demo.clinica-vens.com {
+    reverse_proxy 127.0.0.1:8081
+}
+```
+
+Con Nginx y Certbot, sería un `server { server_name demo.clinica-vens.com; location / { proxy_pass http://127.0.0.1:8081; ... } }`
+y después `certbot --nginx -d demo.clinica-vens.com`.
+
+Usuarios: `admin@vens.com`, `medico@vens.com` y `recepcion@vens.com`, con la
+contraseña `Password123!`.
+
+### Al terminar
+
+```bash
+make demo-down           # la apaga y conserva sus datos
+make demo-down V=-v      # la apaga y borra su base
+```
+
+Producción no se toca en ningún momento.
 
 ## 🔧 Solución de Problemas
 

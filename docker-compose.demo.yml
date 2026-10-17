@@ -1,0 +1,139 @@
+# =============================================================================
+# docker-compose.demo.yml — Entorno de DEMOSTRACIÓN
+# Centro Médico de Flebología — Vens
+# =============================================================================
+# Una copia de producción que se puede enseñar en público: la misma imagen,
+# pero con su propia base de datos llena de pacientes ficticios (DemoSeeder).
+# Se sirve en un subdominio aparte (p. ej. demo.clinica-vens.com) y convive
+# en el mismo servidor con producción sin tocarla.
+#
+# Diferencias con docker-compose.prod.yml:
+#   - Otro proyecto, otros contenedores, otra red y otros volúmenes: ni un
+#     solo nombre se comparte con producción.
+#   - No hay contenedor de WhatsApp: la demo no debe poder escribirle a nadie.
+#     WHATSAPP_URL apunta a un puerto cerrado y cada envío falla como «sin
+#     servicio», igual que con el teléfono desvinculado.
+#   - La aplicación solo escucha en 127.0.0.1: se llega a ella por el proxy
+#     del servidor, que es quien tiene el certificado del subdominio.
+#   - Construye su propia imagen, vens-app:demo, con el mismo Dockerfile.
+#
+# Uso:
+#   cp .env.demo.example .env.demo        # y editarlo
+#   make demo-build
+#   make demo-up
+#   make demo-reset                       # base vacía + pacientes ficticios
+#   make demo-down                        # al terminar la presentación
+# =============================================================================
+
+name: vens-demo
+
+services:
+
+  app:
+    # Imagen propia (vens-app:demo), no la de producción: así compilar la demo
+    # nunca cambia lo que corre producción en su próximo arranque.
+    build:
+      context: ..
+      dockerfile: Backend-Vens/docker/prod/Dockerfile
+      args:
+        VITE_API_BASE_URL: /api/v1
+        VITE_GOOGLE_CLIENT_ID: ""
+    image: vens-app:demo
+    pull_policy: never
+    container_name: vens_demo_app
+
+    ports:
+      - "127.0.0.1:${APP_PORT:-8081}:80"
+
+    env_file:
+      - .env.demo
+
+    environment:
+      DB_HOST: mysql
+      DB_PORT: 3306
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      # Puerto cerrado a propósito: no hay servicio de WhatsApp en la demo
+      WHATSAPP_URL: http://127.0.0.1:9
+      LOG_CHANNEL: stderr
+      FRONTEND_URL: ${APP_URL}
+
+    volumes:
+      - storage_publico:/var/www/html/storage/app/public
+
+    restart: unless-stopped
+
+    networks:
+      - vens_network
+
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  mysql:
+    image: mysql:8.0
+    container_name: vens_demo_mysql
+
+    environment:
+      MYSQL_ROOT_PASSWORD: ${DB_ROOT_PASSWORD:?Defina DB_ROOT_PASSWORD en .env.demo}
+      MYSQL_DATABASE: ${DB_DATABASE:?Defina DB_DATABASE en .env.demo}
+      MYSQL_USER: ${DB_USERNAME:?Defina DB_USERNAME en .env.demo}
+      MYSQL_PASSWORD: ${DB_PASSWORD:?Defina DB_PASSWORD en .env.demo}
+      TZ: America/Guatemala
+
+    command: >
+      --character-set-server=utf8mb4
+      --collation-server=utf8mb4_unicode_ci
+      --default-authentication-plugin=mysql_native_password
+      --sql-mode=STRICT_TRANS_TABLES,NO_ZERO_DATE,NO_ZERO_IN_DATE,ERROR_FOR_DIVISION_BY_ZERO
+
+    volumes:
+      - mysql_data:/var/lib/mysql
+
+    restart: unless-stopped
+
+    networks:
+      - vens_network
+
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-p${DB_ROOT_PASSWORD}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+  redis:
+    image: redis:7.2-alpine
+    container_name: vens_demo_redis
+
+    command: redis-server --appendonly yes --requirepass ${REDIS_PASSWORD:?Defina REDIS_PASSWORD en .env.demo}
+
+    volumes:
+      - redis_data:/data
+
+    restart: unless-stopped
+
+    networks:
+      - vens_network
+
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD}", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+volumes:
+  mysql_data:
+    name: vens_demo_mysql_data
+  redis_data:
+    name: vens_demo_redis_data
+  storage_publico:
+    name: vens_demo_storage
+
+networks:
+  vens_network:
+    name: vens_demo_network
+    driver: bridge
