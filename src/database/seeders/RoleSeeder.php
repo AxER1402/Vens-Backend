@@ -28,16 +28,6 @@ class RoleSeeder extends Seeder
                 'slug' => 'recepcionista',
                 'descripcion' => 'Tiene acceso a la agenda, recepción de pacientes y programación de citas.',
             ],
-            [
-                'nombre' => 'Enfermera',
-                'slug' => 'enfermera',
-                'descripcion' => 'Tiene acceso a apoyo médico, asistencia en procedimientos y toma de signos vitales.',
-            ],
-            [
-                'nombre' => 'Paciente',
-                'slug' => 'paciente',
-                'descripcion' => 'Acceso exclusivo al portal del paciente para consultar citas, indicaciones e historial personal.',
-            ],
         ];
 
         foreach ($roles as $roleData) {

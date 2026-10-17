@@ -58,7 +58,7 @@ class PasswordResetTest extends TestCase
     {
         Notification::fake();
 
-        $user = User::where('email', 'enfermera@vens.com')->first();
+        $user = User::where('email', 'recepcion@vens.com')->first();
         $user->update(['activo' => false]);
 
         $response = $this->postJson('/api/v1/auth/forgot-password', [

@@ -39,7 +39,7 @@ class StoreUserRequest extends FormRequest
             'name' => ['required', 'string', 'max:255'],
             'email' => ['required', 'string', 'email', 'max:255', 'unique:users,email'],
             'password' => ['required', 'string', 'min:8', 'confirmed'],
-            'rol' => ['required', 'string', Rule::in(['administrador', 'medico', 'enfermera', 'recepcionista'])],
+            'rol' => ['required', 'string', Rule::in(['administrador', 'medico', 'recepcionista'])],
             'telefono' => Telefono::reglas(false),
             'activo' => ['nullable', 'boolean'],
         ];
@@ -61,7 +61,7 @@ class StoreUserRequest extends FormRequest
             'password.min' => 'La contraseña debe tener al menos 8 caracteres.',
             'password.confirmed' => 'La confirmación de la contraseña no coincide.',
             'rol.required' => 'El rol del usuario es obligatorio.',
-            'rol.in' => 'El rol seleccionado no es válido. Los roles permitidos son: administrador, medico, enfermera, recepcionista.',
+            'rol.in' => 'El rol seleccionado no es válido. Los roles permitidos son: administrador, medico, recepcionista.',
             'activo.boolean' => 'El campo activo debe ser un valor booleano (true o false).',
         ]);
     }

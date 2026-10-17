@@ -652,7 +652,7 @@ estaba. Hace falta un target propio porque `migrate:fresh` por su cuenta no
 basta: los archivos subidos viven en el volumen `vens_prod_storage` y las
 cascadas de MySQL no los tocan, los ajustes cacheados están en Redis, y sin
 `--seed` la base queda sin roles ni usuarios, es decir, sin poder entrar.
-Deja los cuatro usuarios y cuatro pacientes de ejemplo del seeder.
+Deja los tres usuarios (administrador, médico y recepcionista) y los pacientes de ejemplo del seeder.
 
 ### Actualizar una versión desplegada
 

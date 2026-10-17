@@ -38,14 +38,6 @@ class UserSeeder extends Seeder
                 'activo' => true,
                 'telefono' => '50370000003',
             ],
-            [
-                'name' => 'Enf. María López',
-                'email' => 'enfermera@vens.com',
-                'password' => Hash::make('Password123!'),
-                'rol' => 'enfermera',
-                'activo' => true,
-                'telefono' => '50370000004',
-            ],
         ];
 
         foreach ($users as $userData) {

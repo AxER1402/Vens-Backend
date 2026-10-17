@@ -127,7 +127,7 @@ class AuditoriaTest extends TestCase
 
     public function test_solo_el_administrador_puede_leerla(): void
     {
-        foreach (['medico', 'recepcionista', 'enfermera'] as $rol) {
+        foreach (['medico', 'recepcionista'] as $rol) {
             $this->actingAs($this->usuario($rol), 'sanctum')
                 ->getJson('/api/v1/auditoria')
                 ->assertStatus(403);
