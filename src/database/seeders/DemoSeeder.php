@@ -11,6 +11,7 @@ use App\Models\Patient;
 use App\Models\Service;
 use App\Models\User;
 use App\Support\Facturacion\Totales;
+use Database\Seeders\Demo\AjusteDemo;
 use Illuminate\Database\Console\Seeds\WithoutModelEvents;
 use Illuminate\Database\Seeder;
 use Illuminate\Support\Carbon;
@@ -65,6 +66,10 @@ class DemoSeeder extends Seeder
         Carbon::setTestNow();
 
         $this->numerarRecibosPorFecha();
+
+        // Una consulta por paciente, mapeos venosos y bitácora: lo mismo que
+        // `php artisan demo:ajustar` hace sobre una demo ya sembrada.
+        AjusteDemo::aplicar(AjusteDemo::planear());
     }
 
     /**

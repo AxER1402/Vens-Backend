@@ -43,7 +43,7 @@ NC     = \033[0m # Sin color
         composer-install artisan queue-work logs-vite npm restart-vite \
         prod-build prod-up prod-down prod-logs prod-shell prod-ps prod-key \
         prod-reset prod-seed prod-db prod-respaldo \
-        demo-build demo-key demo-up demo-down demo-logs demo-ps demo-reset
+        demo-build demo-key demo-up demo-down demo-logs demo-ps demo-reset demo-ajustar
 
 # ── Ayuda ─────────────────────────────────────────────────────────────────────
 # Ejecutar solo "make" muestra esta ayuda
@@ -486,3 +486,9 @@ demo-reset:
 	$(COMPOSE_DEMO) exec -u www-data app php artisan cache:clear
 	@echo "$(GREEN)✔ Demo lista: 9 pacientes ficticios$(NC)"
 	@echo "$(YELLOW)Usuarios: admin@vens.com, medico@vens.com, recepcion@vens.com — Password123!$(NC)"
+
+# Poner al día una demo ya sembrada SIN resetearla: una consulta por paciente,
+# mapeos venosos y bitácora. Respeta lo que se haya editado desde la pantalla.
+# Sin APLICAR=1 solo muestra lo que haría.
+demo-ajustar:
+	$(COMPOSE_DEMO) exec -u www-data app php artisan demo:ajustar $(if $(APLICAR),--aplicar,)

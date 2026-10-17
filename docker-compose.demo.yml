@@ -37,7 +37,9 @@ services:
       dockerfile: Backend-Vens/docker/prod/Dockerfile
       args:
         VITE_API_BASE_URL: /api/v1
-        VITE_GOOGLE_CLIENT_ID: ""
+        # Mismo Client ID que producción (es público: va dentro del JavaScript).
+        # El dominio de la demo debe estar autorizado en Google Cloud Console.
+        VITE_GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
     image: vens-app:demo
     pull_policy: never
     container_name: vens_demo_app
