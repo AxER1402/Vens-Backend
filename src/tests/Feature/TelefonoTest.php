@@ -46,9 +46,11 @@ class TelefonoTest extends TestCase
 
     public function test_los_separadores_se_limpian_al_guardar(): void
     {
-        foreach (['2222-2222', '2222 2222', '(502) 2222-2222', '+502 2222 2222'] as $escrito) {
+        // Un nombre distinto en cada vuelta: dos de estos números quedan iguales
+        // al limpiarlos y, con el mismo nombre, serían un paciente duplicado.
+        foreach (['2222-2222', '2222 2222', '(502) 2222-2222', '+502 2222 2222'] as $i => $escrito) {
             $guardado = $this->actingAs($this->admin(), 'sanctum')
-                ->postJson('/api/v1/patients', $this->paciente($escrito))
+                ->postJson('/api/v1/patients', array_merge($this->paciente($escrito), ['nombre' => "Paciente de prueba {$i}"]))
                 ->assertStatus(201)
                 ->json('data.telefono');
 

@@ -3,8 +3,10 @@
 namespace App\Http\Requests\Patient;
 
 use App\Support\Contacto\Telefono;
+use App\Support\Pacientes\Duplicados;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
+use Illuminate\Validation\Validator;
 
 class StorePatientRequest extends FormRequest
 {
@@ -53,6 +55,26 @@ class StorePatientRequest extends FormRequest
             ],
             'activo' => ['nullable', 'boolean'],
         ];
+    }
+
+    /**
+     * Regla de negocio: no se registra dos veces al mismo paciente (mismo
+     * nombre y teléfono). Se revisa después de las reglas de formato, para
+     * no comparar contra datos que de todos modos se van a rechazar.
+     */
+    public function withValidator(Validator $validator): void
+    {
+        $validator->after(function (Validator $validator) {
+            if ($validator->errors()->isNotEmpty()) {
+                return;
+            }
+
+            $existente = Duplicados::buscar($this->input('nombre'), $this->input('telefono'));
+
+            if ($existente !== null) {
+                $validator->errors()->add('nombre', Duplicados::mensaje($existente));
+            }
+        });
     }
 
     /**

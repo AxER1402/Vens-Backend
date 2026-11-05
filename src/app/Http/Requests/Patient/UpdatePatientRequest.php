@@ -3,8 +3,10 @@
 namespace App\Http\Requests\Patient;
 
 use App\Support\Contacto\Telefono;
+use App\Support\Pacientes\Duplicados;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
+use Illuminate\Validation\Validator;
 
 class UpdatePatientRequest extends FormRequest
 {
@@ -55,6 +57,32 @@ class UpdatePatientRequest extends FormRequest
             ],
             'activo' => ['sometimes', 'boolean'],
         ];
+    }
+
+    /**
+     * Al cambiar el nombre o el teléfono, el paciente no puede quedar igual a
+     * otro ya registrado. Si la edición no toca esos datos no se revisa, para
+     * no bloquear cambios ajenos sobre registros anteriores a esta regla.
+     */
+    public function withValidator(Validator $validator): void
+    {
+        $validator->after(function (Validator $validator) {
+            if ($validator->errors()->isNotEmpty() || ! $this->hasAny(['nombre', 'telefono'])) {
+                return;
+            }
+
+            $paciente = $this->route('patient');
+
+            $existente = Duplicados::buscar(
+                $this->input('nombre', $paciente?->nombre),
+                $this->input('telefono', $paciente?->telefono),
+                $paciente?->getKey(),
+            );
+
+            if ($existente !== null) {
+                $validator->errors()->add('nombre', Duplicados::mensaje($existente));
+            }
+        });
     }
 
     /**
