@@ -402,12 +402,14 @@ prod-respaldo:
 # Sembrar los catálogos de producción sin borrar nada.
 # Hace falta explícitamente porque el entrypoint migra pero NO siembra: una base
 # recién creada tiene las tablas vacías, y sin roles ni usuarios no hay forma de
-# iniciar sesión. Los seeders de catálogo son idempotentes; PatientSeeder no,
-# así que repetir esto duplica los cuatro pacientes de ejemplo.
+# iniciar sesión. Corre CatalogosSeeder y no DatabaseSeeder: este último crea
+# cuatro pacientes de ejemplo en cada corrida —mezclados con los reales— y
+# devuelve a las cuentas de ejemplo la contraseña publicada en el README.
+# CatalogosSeeder solo crea esas cuentas si la base no tiene ninguna.
 prod-seed:
 	@test -f .env.prod || { echo "$(RED)✖ Falta .env.prod — cópielo de .env.prod.example$(NC)"; exit 1; }
 	@echo "$(YELLOW)🌱 Sembrando la base de producción...$(NC)"
-	$(COMPOSE_PROD) exec -u www-data app php artisan db:seed --force
+	$(COMPOSE_PROD) exec -u www-data app php artisan db:seed --class=CatalogosSeeder --force
 	@echo "$(GREEN)✔ Catálogos sembrados$(NC)"
 
 # Devolver producción al estado recién instalado, para probar sin dejar rastro.

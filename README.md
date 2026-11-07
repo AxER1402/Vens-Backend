@@ -645,7 +645,7 @@ manual equivalente a `make migrate`.
 | `make prod-shell` | Terminal dentro del contenedor de la aplicación |
 | `make prod-key` | Genera una `APP_KEY` |
 | `make prod-db` | Consola de MySQL (el 3306 no está publicado) |
-| `make prod-seed` | Siembra los catálogos sin borrar nada |
+| `make prod-seed` | Siembra los catálogos sin borrar nada (sin pacientes de ejemplo; las cuentas iniciales solo si no hay ninguna) |
 | `make prod-reset` | ⚠ Vacía la base, resiembra y borra los archivos subidos |
 
 `make prod-reset` existe para probar el despliegue y dejarlo después como
