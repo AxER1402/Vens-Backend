@@ -482,10 +482,13 @@ demo-reset:
 	@test -f .env.demo || { echo "$(RED)✖ Falta .env.demo — cópielo de .env.demo.example$(NC)"; exit 1; }
 	@echo "$(YELLOW)🗃  Vaciando la base de la demo...$(NC)"
 	$(COMPOSE_DEMO) exec -u www-data app php artisan migrate:fresh --force
+	@# Los archivos subidos se borran ANTES de sembrar: DemoSeeder dibuja la
+	@# imagen de cada mapeo venoso, y borrarlos después dejaba las historias
+	@# apuntando a un PNG que ya no existe (el informe no se podía emitir).
+	$(COMPOSE_DEMO) exec -u www-data app sh -c 'rm -rf /var/www/html/storage/app/public/mapeos-venosos /var/www/html/storage/app/public/avatares /var/www/html/storage/app/public/ajustes'
+	$(COMPOSE_DEMO) exec -u www-data app php artisan cache:clear
 	@echo "$(YELLOW)🌱 Sembrando pacientes ficticios...$(NC)"
 	$(COMPOSE_DEMO) exec -u www-data app php artisan db:seed --class=DemoSeeder --force
-	$(COMPOSE_DEMO) exec -u www-data app sh -c 'rm -rf /var/www/html/storage/app/public/mapeos-venosos /var/www/html/storage/app/public/avatares'
-	$(COMPOSE_DEMO) exec -u www-data app php artisan cache:clear
 	@echo "$(GREEN)✔ Demo lista: 9 pacientes ficticios$(NC)"
 	@echo "$(YELLOW)Usuarios: los correos DEMO_CORREO_* de .env.demo (o admin@, medico@ y recepcion@vens.com) — Password123!$(NC)"
 
