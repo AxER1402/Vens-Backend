@@ -751,8 +751,13 @@ ficticios (`src/database/seeders/DemoSeeder.php`):
   Ecodöppler y un recibo por consulta (uno anulado y reemitido por recepción).
 - Tres citas agendadas para la semana del 9 de noviembre, una de ellas de una
   paciente nueva.
-- Bitácora de esas semanas: la médica (Dra. Claudia Ovalle, nombre ficticio) y
-  recepción abren y cierran sus jornadas; el administrador solo crea las cuentas.
+- Pacientes de Santa Cruz del Quiché y municipios cercanos (Chichicastenango,
+  Nebaj, Sacapulas, Chiché, Chinique, Joyabaj).
+- Cuentas: Dra. Yojana Vicente (médica), Secretaria (recepción) y Alexander
+  Blanco (administrador). Los nombres se ponen en `DemoSeeder::NOMBRES`, no en
+  `UserSeeder`, que también siembra producción.
+- Bitácora de esas semanas: la médica y recepción abren y cierran sus jornadas;
+  el administrador solo crea las cuentas.
 
 La demo se construye con el mismo Dockerfile que producción pero en su propia
 imagen (`vens-app:demo`), con **su propia base, Redis y volúmenes**. No tiene WhatsApp, no respalda en R2, no envía correos y no

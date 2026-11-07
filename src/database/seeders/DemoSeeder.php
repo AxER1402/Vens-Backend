@@ -58,8 +58,17 @@ class DemoSeeder extends Seeder
         ],
     ];
 
-    /** Nombre ficticio de la médica de la demo (UserSeeder es el de producción). */
-    private const NOMBRE_MEDICA = 'Dra. Claudia Ovalle (Flebóloga)';
+    /**
+     * Nombres de las cuentas en la demo. Se ponen aquí y no en UserSeeder,
+     * que también siembra producción. La bitácora sembrada los toma de aquí.
+     *
+     * @var array<string, string>
+     */
+    private const NOMBRES = [
+        'admin@vens.com' => 'Alexander Blanco',
+        'medico@vens.com' => 'Dra. Yojana Vicente',
+        'recepcion@vens.com' => 'Secretaria',
+    ];
 
     /** Horario de atención: de lunes a viernes, de 8:00 a 17:00. */
     private const HORARIO = [
@@ -97,7 +106,9 @@ class DemoSeeder extends Seeder
             AjusteSeeder::class,
         ]);
 
-        User::where('rol', 'medico')->update(['name' => self::NOMBRE_MEDICA]);
+        foreach (self::NOMBRES as $correo => $nombre) {
+            User::where('email', $correo)->update(['name' => $nombre]);
+        }
 
         $this->medico = User::where('rol', 'medico')->firstOrFail();
         $this->recepcion = User::where('rol', 'recepcionista')->firstOrFail();
@@ -425,7 +436,7 @@ class DemoSeeder extends Seeder
                 'nombre' => 'María Fernanda López Cifuentes',
                 'edad' => 42,
                 'telefono' => '55218764',
-                'lugar_residencia' => 'Mixco, Guatemala',
+                'lugar_residencia' => 'Santa Cruz del Quiché, Quiché',
                 'estado_civil' => 'Casado/a',
                 'religion' => 'Católica',
                 'estado' => 'Seguimiento',
@@ -518,7 +529,7 @@ class DemoSeeder extends Seeder
                 'nombre' => 'Ana Lucía Herrera Morales',
                 'edad' => 35,
                 'telefono' => '42917355',
-                'lugar_residencia' => 'Zona 10, Ciudad de Guatemala',
+                'lugar_residencia' => 'Santa Cruz del Quiché, Quiché',
                 'estado_civil' => 'Soltero/a',
                 'religion' => 'Evangélica',
                 'estado' => 'Seguimiento',
@@ -579,7 +590,7 @@ class DemoSeeder extends Seeder
                 'nombre' => 'Rosa Elvira Chávez de Pineda',
                 'edad' => 58,
                 'telefono' => '57340219',
-                'lugar_residencia' => 'Villa Nueva, Guatemala',
+                'lugar_residencia' => 'Chichicastenango, Quiché',
                 'estado_civil' => 'Casado/a',
                 'religion' => 'Católica',
                 'estado' => 'Seguimiento',
@@ -665,7 +676,7 @@ class DemoSeeder extends Seeder
                 'nombre' => 'Carlos Enrique Méndez Rodas',
                 'edad' => 51,
                 'telefono' => '30482617',
-                'lugar_residencia' => 'San Miguel Petapa, Guatemala',
+                'lugar_residencia' => 'Santa María Nebaj, Quiché',
                 'estado_civil' => 'Casado/a',
                 'religion' => 'Católica',
                 'estado' => 'Activo',
@@ -748,7 +759,7 @@ class DemoSeeder extends Seeder
                 'nombre' => 'Gabriela Sofía Ramírez Ortiz',
                 'edad' => 29,
                 'telefono' => '48125590',
-                'lugar_residencia' => 'Antigua Guatemala, Sacatepéquez',
+                'lugar_residencia' => 'Chiché, Quiché',
                 'estado_civil' => 'Soltero/a',
                 'religion' => 'Católica',
                 'estado' => 'Seguimiento',
@@ -815,7 +826,7 @@ class DemoSeeder extends Seeder
                 'nombre' => 'Lucía Beatriz Monzón Archila',
                 'edad' => 47,
                 'telefono' => '59063482',
-                'lugar_residencia' => 'Zona 15, Ciudad de Guatemala',
+                'lugar_residencia' => 'Santa Cruz del Quiché, Quiché',
                 'estado_civil' => 'Divorciado/a',
                 'religion' => 'Católica',
                 'estado' => 'Activo',
@@ -909,7 +920,7 @@ class DemoSeeder extends Seeder
                 'nombre' => 'Jorge Luis Castillo Barrios',
                 'edad' => 63,
                 'telefono' => '54790138',
-                'lugar_residencia' => 'Chimaltenango, Chimaltenango',
+                'lugar_residencia' => 'Sacapulas, Quiché',
                 'estado_civil' => 'Viudo/a',
                 'religion' => 'Evangélica',
                 'estado' => 'Seguimiento',
@@ -982,7 +993,7 @@ class DemoSeeder extends Seeder
                 'nombre' => 'Marta Julia Sandoval Reyes',
                 'edad' => 67,
                 'telefono' => '41639027',
-                'lugar_residencia' => 'Zona 7, Ciudad de Guatemala',
+                'lugar_residencia' => 'Chinique, Quiché',
                 'estado_civil' => 'Casado/a',
                 'religion' => 'Católica',
                 'estado' => 'Alta',
@@ -1046,7 +1057,7 @@ class DemoSeeder extends Seeder
                 'nombre' => 'Andrea Paola Gómez Estrada',
                 'edad' => 33,
                 'telefono' => '35208841',
-                'lugar_residencia' => 'Fraijanes, Guatemala',
+                'lugar_residencia' => 'Joyabaj, Quiché',
                 'estado_civil' => 'Unión Libre',
                 'religion' => null,
                 'estado' => 'Activo',
