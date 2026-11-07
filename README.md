@@ -741,11 +741,18 @@ confidencialidad), se levanta en el mismo servidor una **segunda copia
 aislada** en un subdominio, p. ej. `demo.clinica-vens.com`, con 9 pacientes
 ficticios (`src/database/seeders/DemoSeeder.php`):
 
-- Citas repartidas en las semanas del **5 al 9** y del **12 al 15 de octubre de 2026**:
-  completadas, una reagendada, una cancelada y una inasistencia.
-- Historias clínicas, estudios Ecodöppler y recibos para cada consulta atendida.
-- Una paciente nueva con su primera cita el martes 20 de octubre, y dos
-  controles agendados para esa misma semana.
+- Citas del **19 de octubre al 6 de noviembre de 2026**, una o dos por día y
+  con días sin consulta: completadas, una reagendada, una cancelada y una
+  inasistencia. Siete de los nueve pacientes son mujeres.
+- Agenda con horario de lunes a viernes de 8:00 a 17:00 y días bloqueados: el
+  feriado del 20 de octubre y el cierre de Todos los Santos del viernes 30 al
+  lunes 2 de noviembre.
+- Historia clínica con mapeo venoso para cada paciente atendido, cinco estudios
+  Ecodöppler y un recibo por consulta (uno anulado y reemitido por recepción).
+- Tres citas agendadas para la semana del 9 de noviembre, una de ellas de una
+  paciente nueva.
+- Bitácora de esas semanas: la médica (Dra. Claudia Ovalle, nombre ficticio) y
+  recepción abren y cierran sus jornadas; el administrador solo crea las cuentas.
 
 La demo se construye con el mismo Dockerfile que producción pero en su propia
 imagen (`vens-app:demo`), con **su propia base, Redis y volúmenes**. No tiene WhatsApp, no respalda en R2, no envía correos y no

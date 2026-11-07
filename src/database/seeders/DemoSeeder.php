@@ -3,6 +3,7 @@
 namespace Database\Seeders;
 
 use App\Models\Appointment;
+use App\Models\BlockedDay;
 use App\Models\ClinicalHistory;
 use App\Models\ClinicalOption;
 use App\Models\DopplerReport;
@@ -10,6 +11,7 @@ use App\Models\Invoice;
 use App\Models\Patient;
 use App\Models\Service;
 use App\Models\User;
+use App\Support\Ajustes\Ajustes;
 use App\Support\Facturacion\Totales;
 use Database\Seeders\Demo\AjusteDemo;
 use Illuminate\Database\Console\Seeds\WithoutModelEvents;
@@ -23,6 +25,11 @@ use RuntimeException;
  * Ninguna persona de aquí existe: nombres, teléfonos y hallazgos son inventados
  * para poder enseñar el sistema sin exponer a los pacientes de la clínica.
  *
+ * Cubre las semanas del 19 de octubre al 6 de noviembre de 2026, con el ritmo
+ * de una consulta pequeña: uno o dos pacientes al día, días sin consulta, el
+ * feriado del 20 de octubre y el cierre de Todos los Santos (del viernes 30 al
+ * lunes 2) bloqueados en la agenda, y tres citas agendadas para la semana del 9.
+ *
  * No está en DatabaseSeeder a propósito, y se niega a correr sobre una base que
  * ya tenga pacientes o en un servidor cuyo APP_URL no sea el de la demo:
  *
@@ -31,6 +38,39 @@ use RuntimeException;
 class DemoSeeder extends Seeder
 {
     use WithoutModelEvents;
+
+    /**
+     * Días en que la clínica no atiende: se bloquean en la agenda y ni se
+     * agenda ni se registra nada en ellos.
+     *
+     * @var array<int, array{inicio: string, fin: string, motivo: string, tipo: string, registrado: string}>
+     */
+    public const BLOQUEOS = [
+        [
+            'inicio' => '2026-10-20', 'fin' => '2026-10-20',
+            'motivo' => 'Día de la Revolución', 'tipo' => 'Feriado',
+            'registrado' => '2026-10-13 18:55:00',
+        ],
+        [
+            'inicio' => '2026-10-30', 'fin' => '2026-11-02',
+            'motivo' => 'Día de Todos los Santos: la clínica cierra del viernes 30 al lunes 2', 'tipo' => 'Feriado',
+            'registrado' => '2026-10-23 12:18:00',
+        ],
+    ];
+
+    /** Nombre ficticio de la médica de la demo (UserSeeder es el de producción). */
+    private const NOMBRE_MEDICA = 'Dra. Claudia Ovalle (Flebóloga)';
+
+    /** Horario de atención: de lunes a viernes, de 8:00 a 17:00. */
+    private const HORARIO = [
+        'lunes' => ['activo' => true, 'abre' => '08:00', 'cierra' => '17:00'],
+        'martes' => ['activo' => true, 'abre' => '08:00', 'cierra' => '17:00'],
+        'miercoles' => ['activo' => true, 'abre' => '08:00', 'cierra' => '17:00'],
+        'jueves' => ['activo' => true, 'abre' => '08:00', 'cierra' => '17:00'],
+        'viernes' => ['activo' => true, 'abre' => '08:00', 'cierra' => '17:00'],
+        'sabado' => ['activo' => false, 'abre' => null, 'cierra' => null],
+        'domingo' => ['activo' => false, 'abre' => null, 'cierra' => null],
+    ];
 
     private User $medico;
 
@@ -41,6 +81,9 @@ class DemoSeeder extends Seeder
 
     /** La hora real: nada se fecha después de ella aunque la cita sea futura. */
     private Carbon $ahora;
+
+    /** Fin de la cita anterior del paciente que se está sembrando. */
+    private ?Carbon $citaAnterior = null;
 
     public function run(): void
     {
@@ -54,9 +97,12 @@ class DemoSeeder extends Seeder
             AjusteSeeder::class,
         ]);
 
+        User::where('rol', 'medico')->update(['name' => self::NOMBRE_MEDICA]);
+
         $this->medico = User::where('rol', 'medico')->firstOrFail();
         $this->recepcion = User::where('rol', 'recepcionista')->firstOrFail();
 
+        $this->sembrarAgenda();
         $this->sembrarServicios();
 
         foreach ($this->pacientes() as $datos) {
@@ -132,6 +178,62 @@ class DemoSeeder extends Seeder
     }
 
     /**
+     * El horario de atención y los días bloqueados los pone la médica la
+     * primera semana, y el cierre de Todos los Santos lo agrega días antes.
+     */
+    private function sembrarAgenda(): void
+    {
+        $this->fecharEn(Carbon::parse('2026-10-13 18:50:00'));
+        Ajustes::guardar(['agenda.horario' => self::HORARIO, 'agenda.duracion_cita' => 30]);
+
+        foreach (self::BLOQUEOS as $bloqueo) {
+            $this->fecharEn(Carbon::parse($bloqueo['registrado']));
+            BlockedDay::create([
+                'created_by' => $this->medico->id,
+                'fecha_inicio' => $bloqueo['inicio'],
+                'fecha_fin' => $bloqueo['fin'],
+                'motivo' => $bloqueo['motivo'],
+                'tipo' => $bloqueo['tipo'],
+            ]);
+        }
+    }
+
+    /** ¿La clínica atiende ese día? Ni fines de semana ni días bloqueados. */
+    public static function diaDeConsulta(Carbon $dia): bool
+    {
+        if ($dia->isWeekend()) {
+            return false;
+        }
+
+        foreach (self::BLOQUEOS as $bloqueo) {
+            if ($dia->between(Carbon::parse($bloqueo['inicio'])->startOfDay(), Carbon::parse($bloqueo['fin'])->endOfDay())) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    /**
+     * Cuándo se agendó la cita desde recepción: unos días antes, en un día que
+     * la clínica abrió, y nunca antes de la visita anterior del mismo paciente
+     * (el control se agenda al salir de la consulta que lo pidió).
+     */
+    private function agendadaPara(Carbon $inicio): Carbon
+    {
+        $dia = $inicio->copy()->subDays(4)->setTime(10, 15);
+        while (! self::diaDeConsulta($dia)) {
+            $dia->subDay();
+        }
+
+        if ($this->citaAnterior && $dia->lt($this->citaAnterior)) {
+            $dia = $this->citaAnterior->copy()->addMinutes(10);
+        }
+
+        return $dia;
+    }
+
+    /**
      * @param  array<string, mixed>  $datos
      */
     private function sembrarPaciente(array $datos): void
@@ -139,7 +241,9 @@ class DemoSeeder extends Seeder
         $citas = $datos['citas'];
         unset($datos['citas']);
 
-        $this->fecharEn(Carbon::parse($citas[0]['inicio'])->subDays(3)->setTime(16, 20));
+        // Recepción registra al paciente cuando le agenda su primera cita
+        $this->citaAnterior = null;
+        $this->fecharEn($this->agendadaPara(Carbon::parse($citas[0]['inicio']))->subMinutes(5));
         $paciente = Patient::create($datos + ['activo' => true]);
 
         foreach ($citas as $cita) {
@@ -155,7 +259,12 @@ class DemoSeeder extends Seeder
         $inicio = Carbon::parse($cita['inicio']);
 
         // La cita se agenda unos días antes desde recepción
-        $this->fecharEn($inicio->copy()->subDays(4)->setTime(10, 15));
+        $this->fecharEn($this->agendadaPara($inicio));
+        // Una cita que no se dio (se movió o se canceló) no marca cuándo se
+        // agenda la siguiente: esa se pide por teléfono antes de su hora.
+        if (! in_array($cita['estado'], ['Reagendada', 'Cancelada'], true)) {
+            $this->citaAnterior = $inicio->copy()->addMinutes($cita['minutos'] ?? 30);
+        }
         $agendada = Appointment::create([
             'patient_id' => $paciente->id,
             'medico_id' => $this->medico->id,
@@ -233,6 +342,26 @@ class DemoSeeder extends Seeder
             'precio_unitario' => $this->servicios[$clave]->precio,
         ], $cobro['servicios']);
 
+        // Un cobro mal emitido: recepción lo anula y lo vuelve a emitir con el
+        // dato correcto, como se hace en el mostrador. Queda en la bitácora.
+        if (isset($cobro['corrige'])) {
+            $equivocado = $this->emitirRecibo($paciente, $historia, $renglones, Invoice::NIT_CONSUMIDOR_FINAL, $cobro);
+
+            Carbon::setTestNow(now()->addMinutes(2));
+            $equivocado->update(['estado' => 'Anulada', 'motivo_anulacion' => $cobro['corrige']]);
+
+            Carbon::setTestNow(now()->addMinutes(1));
+        }
+
+        $this->emitirRecibo($paciente, $historia, $renglones, $cobro['nit'] ?? Invoice::NIT_CONSUMIDOR_FINAL, $cobro);
+    }
+
+    /**
+     * @param  array<int, array<string, mixed>>  $renglones
+     * @param  array<string, mixed>  $cobro
+     */
+    private function emitirRecibo(Patient $paciente, ClinicalHistory $historia, array $renglones, string $nit, array $cobro): Invoice
+    {
         $iva = (float) config('facturacion.iva_porcentaje', 12);
         $cuentas = Totales::calcular($renglones, $iva);
         $serie = (string) config('facturacion.serie', 'A');
@@ -245,7 +374,7 @@ class DemoSeeder extends Seeder
             'serie' => $serie,
             'numero' => Invoice::siguienteNumero($serie),
             'fecha_emision' => now()->toDateString(),
-            'nit_receptor' => $cobro['nit'] ?? Invoice::NIT_CONSUMIDOR_FINAL,
+            'nit_receptor' => $nit,
             'nombre_receptor' => $paciente->nombre,
             'moneda' => (string) config('facturacion.moneda', 'GTQ'),
             'subtotal' => $cuentas['subtotal'],
@@ -257,6 +386,8 @@ class DemoSeeder extends Seeder
         ]);
 
         $recibo->items()->createMany($cuentas['renglones']);
+
+        return $recibo;
     }
 
     /**
@@ -279,8 +410,9 @@ class DemoSeeder extends Seeder
     }
 
     /**
-     * Los ocho pacientes de las semanas del 5 y del 12 de octubre de 2026, más
-     * una paciente nueva con su primera cita la semana siguiente.
+     * Los ocho pacientes atendidos entre el 19 de octubre y el 6 de noviembre de
+     * 2026, más una paciente nueva con su primera cita la semana siguiente:
+     * siete mujeres y dos hombres.
      *
      * @return array<int, array<string, mixed>>
      */
@@ -299,7 +431,7 @@ class DemoSeeder extends Seeder
                 'estado' => 'Seguimiento',
                 'citas' => [
                     [
-                        'inicio' => '2026-10-05 08:30:00',
+                        'inicio' => '2026-10-19 08:30:00',
                         'minutos' => 45,
                         'motivo' => 'Primera consulta — várices y pesadez en ambas piernas',
                         'estado' => 'Completada',
@@ -309,7 +441,7 @@ class DemoSeeder extends Seeder
                             'alergias' => 'Ninguna conocida',
                             'cirugias' => 'Cesárea (2014)',
                             'gestas' => 2, 'partos' => 1, 'cesareas' => 1, 'abortos' => 0, 'hijos_vivos' => 2, 'hijos_muertos' => 0,
-                            'ultima_menstruacion' => '2026-09-21',
+                            'ultima_menstruacion' => '2026-10-05',
                             'presion_arterial' => '118/76', 'frecuencia_cardiaca' => 74, 'frecuencia_respiratoria' => 16,
                             'temperatura' => 36.6, 'peso' => 68.5, 'perimetro_tobillo' => 23.5, 'perimetro_pantorrilla' => 36.0,
                             'ubicacion_patologia' => 'BILATERAL',
@@ -352,7 +484,7 @@ class DemoSeeder extends Seeder
                         'cobro' => ['servicios' => ['consulta', 'doppler'], 'pago' => 'Tarjeta'],
                     ],
                     [
-                        'inicio' => '2026-10-12 09:00:00',
+                        'inicio' => '2026-10-26 09:00:00',
                         'minutos' => 45,
                         'motivo' => 'Primera sesión de escleroterapia con espuma — MII',
                         'estado' => 'Completada',
@@ -376,7 +508,7 @@ class DemoSeeder extends Seeder
                         'cobro' => ['servicios' => ['esclero', 'medias'], 'pago' => 'Tarjeta'],
                     ],
                     [
-                        'inicio' => '2026-10-21 09:00:00',
+                        'inicio' => '2026-11-10 09:00:00',
                         'motivo' => 'Control post escleroterapia',
                         'estado' => 'Programada',
                     ],
@@ -392,7 +524,7 @@ class DemoSeeder extends Seeder
                 'estado' => 'Seguimiento',
                 'citas' => [
                     [
-                        'inicio' => '2026-10-05 10:00:00',
+                        'inicio' => '2026-10-21 10:00:00',
                         'motivo' => 'Valoración de arañitas vasculares en muslos',
                         'estado' => 'Completada',
                         'historia' => [
@@ -400,7 +532,7 @@ class DemoSeeder extends Seeder
                             'familiar_varices' => true,
                             'alergias' => 'Penicilina',
                             'gestas' => 0, 'partos' => 0, 'cesareas' => 0, 'abortos' => 0,
-                            'ultima_menstruacion' => '2026-09-28',
+                            'ultima_menstruacion' => '2026-10-08',
                             'hormonas' => 'Anticonceptivos orales',
                             'presion_arterial' => '110/70', 'frecuencia_cardiaca' => 68, 'frecuencia_respiratoria' => 14,
                             'temperatura' => 36.4, 'peso' => 59.0,
@@ -419,7 +551,7 @@ class DemoSeeder extends Seeder
                         'cobro' => ['servicios' => ['consulta'], 'pago' => 'Transferencia', 'nit' => '8452197K'],
                     ],
                     [
-                        'inicio' => '2026-10-13 10:00:00',
+                        'inicio' => '2026-11-03 10:00:00',
                         'minutos' => 45,
                         'motivo' => 'Sesión de escleroterapia líquida',
                         'estado' => 'Completada',
@@ -439,7 +571,7 @@ class DemoSeeder extends Seeder
                                 'observaciones' => ['Eritema leve', 'Buena respuesta'],
                             ],
                         ],
-                        'cobro' => ['servicios' => ['esclero'], 'pago' => 'Transferencia', 'nit' => '8452197K'],
+                        'cobro' => ['servicios' => ['esclero'], 'pago' => 'Transferencia', 'nit' => '8452197K', 'corrige' => 'Se emitió a consumidor final; la paciente pidió el recibo con su NIT.'],
                     ],
                 ],
             ],
@@ -453,7 +585,7 @@ class DemoSeeder extends Seeder
                 'estado' => 'Seguimiento',
                 'citas' => [
                     [
-                        'inicio' => '2026-10-06 09:00:00',
+                        'inicio' => '2026-10-22 09:00:00',
                         'minutos' => 45,
                         'motivo' => 'Hinchazón y manchas en pierna izquierda',
                         'estado' => 'Completada',
@@ -507,7 +639,7 @@ class DemoSeeder extends Seeder
                         'cobro' => ['servicios' => ['consulta', 'doppler', 'medias']],
                     ],
                     [
-                        'inicio' => '2026-10-14 09:00:00',
+                        'inicio' => '2026-10-29 09:00:00',
                         'motivo' => 'Control de edema y respuesta a compresión',
                         'estado' => 'Completada',
                         'historia' => [
@@ -539,7 +671,7 @@ class DemoSeeder extends Seeder
                 'estado' => 'Activo',
                 'citas' => [
                     [
-                        'inicio' => '2026-10-06 11:00:00',
+                        'inicio' => '2026-10-21 11:00:00',
                         'minutos' => 45,
                         'motivo' => 'Várices en pierna derecha y calambres nocturnos',
                         'estado' => 'Completada',
@@ -591,7 +723,7 @@ class DemoSeeder extends Seeder
                         'cobro' => ['servicios' => ['consulta', 'doppler'], 'pago' => 'Tarjeta', 'nit' => '2763918'],
                     ],
                     [
-                        'inicio' => '2026-10-15 10:30:00',
+                        'inicio' => '2026-11-05 10:30:00',
                         'motivo' => 'Control y plan de tratamiento',
                         'estado' => 'Completada',
                         'historia' => [
@@ -602,7 +734,7 @@ class DemoSeeder extends Seeder
                             'ceap_c' => 'C2',
                             'evolucion' => 'Mejoría',
                             'estado_general' => 'Requiere nuevas sesiones',
-                            'notas' => 'Refiere menos calambres con venotónico y medias. Se explica escleroterapia ecoguiada de safena menor; paciente acepta, programar en noviembre.',
+                            'notas' => 'Refiere menos calambres con venotónico y medias. Se explica escleroterapia ecoguiada de safena menor; paciente acepta, programar en las próximas semanas.',
                             'selecciones' => [
                                 'sintomas' => ['Cansancio'],
                                 'indicaciones' => ['Venotónico', 'Medias Compresivas'],
@@ -622,7 +754,7 @@ class DemoSeeder extends Seeder
                 'estado' => 'Seguimiento',
                 'citas' => [
                     [
-                        'inicio' => '2026-10-07 08:30:00',
+                        'inicio' => '2026-10-27 08:30:00',
                         'motivo' => 'Primera consulta — venitas visibles en piernas',
                         'estado' => 'Completada',
                         'historia' => [
@@ -630,7 +762,7 @@ class DemoSeeder extends Seeder
                             'familiar_varices' => true,
                             'alergias' => 'Ninguna conocida',
                             'gestas' => 0, 'partos' => 0, 'cesareas' => 0, 'abortos' => 0,
-                            'ultima_menstruacion' => '2026-09-30',
+                            'ultima_menstruacion' => '2026-10-12',
                             'presion_arterial' => '108/68', 'frecuencia_cardiaca' => 66, 'frecuencia_respiratoria' => 14,
                             'temperatura' => 36.3, 'peso' => 55.4,
                             'ubicacion_patologia' => 'BILATERAL',
@@ -648,14 +780,14 @@ class DemoSeeder extends Seeder
                         'cobro' => ['servicios' => ['consulta']],
                     ],
                     [
-                        'inicio' => '2026-10-09 16:00:00',
+                        'inicio' => '2026-10-29 16:00:00',
                         'minutos' => 45,
                         'motivo' => 'Sesión de escleroterapia',
                         'estado' => 'Cancelada',
                         'motivo_cancelacion' => 'La paciente no consiguió permiso en el trabajo; pide pasarla a la siguiente semana.',
                     ],
                     [
-                        'inicio' => '2026-10-14 11:00:00',
+                        'inicio' => '2026-11-06 11:00:00',
                         'minutos' => 45,
                         'motivo' => 'Sesión de escleroterapia',
                         'estado' => 'Completada',
@@ -689,14 +821,14 @@ class DemoSeeder extends Seeder
                 'estado' => 'Activo',
                 'citas' => [
                     [
-                        'inicio' => '2026-10-07 15:00:00',
+                        'inicio' => '2026-10-26 15:00:00',
                         'minutos' => 45,
                         'motivo' => 'Dolor y várices en pierna izquierda',
                         'estado' => 'Reagendada',
-                        'notas' => 'Llamó para moverla al viernes 9 por la mañana.',
+                        'notas' => 'Llamó para moverla al miércoles 28 por la mañana.',
                     ],
                     [
-                        'inicio' => '2026-10-09 10:00:00',
+                        'inicio' => '2026-10-28 10:00:00',
                         'minutos' => 45,
                         'motivo' => 'Dolor y várices en pierna izquierda',
                         'estado' => 'Completada',
@@ -705,7 +837,7 @@ class DemoSeeder extends Seeder
                             'familiar_varices' => true,
                             'alergias' => 'Sulfas',
                             'gestas' => 2, 'partos' => 2, 'cesareas' => 0, 'abortos' => 0, 'hijos_vivos' => 2, 'hijos_muertos' => 0,
-                            'ultima_menstruacion' => '2026-09-25',
+                            'ultima_menstruacion' => '2026-10-10',
                             'presion_arterial' => '122/78', 'frecuencia_cardiaca' => 72, 'frecuencia_respiratoria' => 16,
                             'temperatura' => 36.6, 'peso' => 70.2, 'perimetro_tobillo' => 24.0, 'perimetro_pantorrilla' => 37.0,
                             'ubicacion_patologia' => 'MII',
@@ -748,7 +880,7 @@ class DemoSeeder extends Seeder
                         'cobro' => ['servicios' => ['consulta', 'doppler'], 'pago' => 'Efectivo', 'nit' => '6618402'],
                     ],
                     [
-                        'inicio' => '2026-10-15 14:30:00',
+                        'inicio' => '2026-11-06 14:30:00',
                         'minutos' => 45,
                         'motivo' => 'Escleroterapia con espuma — MII',
                         'estado' => 'Completada',
@@ -783,7 +915,7 @@ class DemoSeeder extends Seeder
                 'estado' => 'Seguimiento',
                 'citas' => [
                     [
-                        'inicio' => '2026-10-08 09:30:00',
+                        'inicio' => '2026-10-22 10:30:00',
                         'minutos' => 45,
                         'motivo' => 'Hinchazón de ambos tobillos',
                         'estado' => 'Completada',
@@ -834,13 +966,13 @@ class DemoSeeder extends Seeder
                         'cobro' => ['servicios' => ['consulta', 'doppler']],
                     ],
                     [
-                        'inicio' => '2026-10-13 15:00:00',
+                        'inicio' => '2026-10-27 15:00:00',
                         'motivo' => 'Control de edema',
                         'estado' => 'No Asistió',
                         'notas' => 'No contestó las llamadas de confirmación.',
                     ],
                     [
-                        'inicio' => '2026-10-19 08:30:00',
+                        'inicio' => '2026-11-09 08:30:00',
                         'motivo' => 'Control de edema (reprogramada)',
                         'estado' => 'Confirmada',
                     ],
@@ -856,7 +988,7 @@ class DemoSeeder extends Seeder
                 'estado' => 'Alta',
                 'citas' => [
                     [
-                        'inicio' => '2026-10-08 14:00:00',
+                        'inicio' => '2026-10-19 14:00:00',
                         'minutos' => 45,
                         'motivo' => 'Control anual de várices',
                         'estado' => 'Completada',
@@ -886,7 +1018,7 @@ class DemoSeeder extends Seeder
                         'cobro' => ['servicios' => ['consulta']],
                     ],
                     [
-                        'inicio' => '2026-10-12 11:30:00',
+                        'inicio' => '2026-11-03 11:30:00',
                         'minutos' => 45,
                         'motivo' => 'Escleroterapia de venas reticulares — MID',
                         'estado' => 'Completada',
@@ -920,7 +1052,7 @@ class DemoSeeder extends Seeder
                 'estado' => 'Activo',
                 'citas' => [
                     [
-                        'inicio' => '2026-10-20 10:00:00',
+                        'inicio' => '2026-11-11 10:00:00',
                         'minutos' => 45,
                         'motivo' => 'Primera consulta — evaluación de várices tras embarazo',
                         'estado' => 'Confirmada',

@@ -38,7 +38,7 @@ class AjustarDemo extends Command
         $this->info('Mapeos venosos que se dibujan:');
         $this->lista(array_map(fn ($m) => "#{$m[0]->id} {$m[0]->patient->nombre} — ".count($m[1]).' elementos', $plan['mapeos']));
 
-        $this->info('Bitácora de auditoría del 28/09 al 16/10: '.($plan['auditoria'] ? 'se registra' : 'ya estaba'));
+        $this->info('Bitácora de auditoría del 12/10 al 06/11: '.($plan['auditoria'] ? 'se registra' : 'ya estaba'));
         $this->info('Cuentas fechadas antes de la primera semana: '.(count($plan['usuarios']) ?: 'ya lo estaban'));
 
         if (! $this->option('aplicar')) {

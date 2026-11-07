@@ -13,7 +13,7 @@ use Illuminate\Support\Facades\DB;
  * creado o editado a mano en ella.
  *
  * Lo sembrado por DemoSeeder se reconoce porque está fechado antes del
- * 17 de octubre de 2026; lo que se haya hecho desde la pantalla es posterior.
+ * 7 de noviembre de 2026; lo que se haya hecho desde la pantalla es posterior.
  *
  *   1. Una sola consulta por paciente en el periodo: las de seguimiento a
  *      pocos días de la primera se quitan y lo que se hizo en ellas queda en
@@ -66,9 +66,12 @@ class AjusteDemo
 
         $plan['auditoria'] = ! AuditoriaDemo::yaSembrada();
 
+        // Una cuenta creada después de su fecha de alta es la que acaba de
+        // sembrar UserSeeder: se le pone la fecha en que la creó el administrador.
         $plan['usuarios'] = User::whereIn('email', array_keys(self::altasDeUsuarios()))
-            ->where('created_at', '>=', AuditoriaDemo::HASTA)
-            ->get()->all();
+            ->get()
+            ->filter(fn (User $u) => $u->created_at->gt(Carbon::parse(self::altasDeUsuarios()[$u->email])))
+            ->values()->all();
 
         return $plan;
     }
@@ -143,9 +146,9 @@ class AjusteDemo
     private static function altasDeUsuarios(): array
     {
         return [
-            'admin@vens.com' => '2026-09-25 15:30:00',
-            'medico@vens.com' => '2026-09-28 09:20:00',
-            'recepcion@vens.com' => '2026-09-28 09:24:00',
+            'admin@vens.com' => '2026-10-09 15:30:00',
+            'medico@vens.com' => '2026-10-12 09:20:00',
+            'recepcion@vens.com' => '2026-10-12 09:24:00',
         ];
     }
 }
