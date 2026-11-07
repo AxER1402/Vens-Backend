@@ -485,7 +485,7 @@ demo-reset:
 	$(COMPOSE_DEMO) exec -u www-data app sh -c 'rm -rf /var/www/html/storage/app/public/mapeos-venosos /var/www/html/storage/app/public/avatares'
 	$(COMPOSE_DEMO) exec -u www-data app php artisan cache:clear
 	@echo "$(GREEN)✔ Demo lista: 9 pacientes ficticios$(NC)"
-	@echo "$(YELLOW)Usuarios: admin@vens.com, medico@vens.com, recepcion@vens.com — Password123!$(NC)"
+	@echo "$(YELLOW)Usuarios: los correos DEMO_CORREO_* de .env.demo (o admin@, medico@ y recepcion@vens.com) — Password123!$(NC)"
 
 # Poner al día una demo ya sembrada SIN resetearla: una consulta por paciente,
 # mapeos venosos y bitácora. Respeta lo que se haya editado desde la pantalla.

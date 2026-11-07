@@ -41,7 +41,11 @@ return [
         'public' => [
             'driver' => 'local',
             'root' => storage_path('app/public'),
-            'url' => rtrim(env('APP_URL', 'http://localhost'), '/').'/storage',
+            // Ruta relativa: la interfaz y la API comparten dominio, así que
+            // el navegador encuentra el archivo sin saber en qué dirección
+            // está publicado el sistema. Con la dirección completa, una
+            // APP_URL desactualizada dejaba las fotos y el logo sin verse.
+            'url' => env('PUBLIC_STORAGE_URL', '/storage'),
             'visibility' => 'public',
             'throw' => false,
             'report' => false,

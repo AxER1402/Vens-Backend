@@ -755,7 +755,11 @@ ficticios (`src/database/seeders/DemoSeeder.php`):
   Nebaj, Sacapulas, Chiché, Chinique, Joyabaj).
 - Cuentas: Dra. Yojana Vicente (médica), Secretaria (recepción) y Alexander
   Blanco (administrador). Los nombres se ponen en `DemoSeeder::NOMBRES`, no en
-  `UserSeeder`, que también siembra producción.
+  `UserSeeder`, que también siembra producción. Los correos se configuran en
+  `.env.demo` (`DEMO_CORREO_ADMIN`, `DEMO_CORREO_MEDICO`,
+  `DEMO_CORREO_RECEPCION`) porque pueden ser reales y el repositorio es
+  público; vacíos, quedan `admin@vens.com`, `medico@vens.com` y
+  `recepcion@vens.com`. La contraseña de las tres es `Password123!`.
 - Bitácora de esas semanas: la médica y recepción abren y cierran sus jornadas;
   el administrador solo crea las cuentas.
 

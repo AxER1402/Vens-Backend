@@ -59,15 +59,17 @@ class DemoSeeder extends Seeder
     ];
 
     /**
-     * Nombres de las cuentas en la demo. Se ponen aquí y no en UserSeeder,
-     * que también siembra producción. La bitácora sembrada los toma de aquí.
+     * Nombres de las cuentas en la demo, por rol. Se ponen aquí y no en
+     * UserSeeder, que también siembra producción. Los correos vienen de
+     * config/demo.php (.env.demo del servidor), porque pueden ser reales y el
+     * repositorio es público. La bitácora sembrada toma ambos de la cuenta.
      *
      * @var array<string, string>
      */
     private const NOMBRES = [
-        'admin@vens.com' => 'Alexander Blanco',
-        'medico@vens.com' => 'Dra. Yojana Vicente',
-        'recepcion@vens.com' => 'Secretaria',
+        'administrador' => 'Alexander Blanco',
+        'medico' => 'Dra. Yojana Vicente',
+        'recepcionista' => 'Secretaria',
     ];
 
     /** Horario de atención: de lunes a viernes, de 8:00 a 17:00. */
@@ -106,8 +108,11 @@ class DemoSeeder extends Seeder
             AjusteSeeder::class,
         ]);
 
-        foreach (self::NOMBRES as $correo => $nombre) {
-            User::where('email', $correo)->update(['name' => $nombre]);
+        foreach (self::NOMBRES as $rol => $nombre) {
+            User::where('rol', $rol)->update([
+                'name' => $nombre,
+                'email' => config("demo.correos.{$rol}"),
+            ]);
         }
 
         $this->medico = User::where('rol', 'medico')->firstOrFail();

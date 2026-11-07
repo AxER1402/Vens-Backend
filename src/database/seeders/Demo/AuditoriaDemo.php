@@ -50,9 +50,9 @@ class AuditoriaDemo
      */
     public static function sembrar(): int
     {
-        $admin = User::where('email', 'admin@vens.com')->first();
-        $medico = User::where('email', 'medico@vens.com')->first();
-        $recepcion = User::where('email', 'recepcion@vens.com')->first();
+        $admin = User::where('rol', 'administrador')->orderBy('id')->first();
+        $medico = User::where('rol', 'medico')->orderBy('id')->first();
+        $recepcion = User::where('rol', 'recepcionista')->orderBy('id')->first();
 
         if (! $admin || ! $medico || ! $recepcion) {
             return 0;

@@ -158,11 +158,15 @@ class AjusteController extends Controller
     /**
      * La dirección con la que el navegador ve un archivo de public/.
      *
+     * Relativa al dominio, igual que el disco public: la interfaz se sirve
+     * desde el mismo sitio que la API, y así el logo se ve aunque APP_URL
+     * no coincida con la dirección real del servidor.
+     *
      * @param  string  $relativa  Ruta relativa a public/ ('img/isotipo.png').
      */
     private function urlPublica(string $relativa): string
     {
-        return rtrim((string) config('app.url'), '/').'/'.ltrim($relativa, '/');
+        return '/'.ltrim($relativa, '/');
     }
 
     /**

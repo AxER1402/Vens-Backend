@@ -68,9 +68,9 @@ class AjusteDemo
 
         // Una cuenta creada después de su fecha de alta es la que acaba de
         // sembrar UserSeeder: se le pone la fecha en que la creó el administrador.
-        $plan['usuarios'] = User::whereIn('email', array_keys(self::altasDeUsuarios()))
+        $plan['usuarios'] = User::whereIn('rol', array_keys(self::altasDeUsuarios()))
             ->get()
-            ->filter(fn (User $u) => $u->created_at->gt(Carbon::parse(self::altasDeUsuarios()[$u->email])))
+            ->filter(fn (User $u) => $u->created_at->gt(Carbon::parse(self::altasDeUsuarios()[$u->rol])))
             ->values()->all();
 
         return $plan;
@@ -90,8 +90,8 @@ class AjusteDemo
             foreach ($plan['usuarios'] as $usuario) {
                 $usuario->timestamps = false;
                 $usuario->forceFill([
-                    'created_at' => self::altasDeUsuarios()[$usuario->email],
-                    'updated_at' => self::altasDeUsuarios()[$usuario->email],
+                    'created_at' => self::altasDeUsuarios()[$usuario->rol],
+                    'updated_at' => self::altasDeUsuarios()[$usuario->rol],
                 ])->save();
             }
         });
@@ -139,16 +139,17 @@ class AjusteDemo
     }
 
     /**
-     * Cuándo se dio de alta cada cuenta: antes de la primera semana de citas.
+     * Cuándo se dio de alta cada cuenta, por rol: antes de la primera semana
+     * de citas. Por rol y no por correo, que en la demo se configura.
      *
      * @return array<string, string>
      */
     private static function altasDeUsuarios(): array
     {
         return [
-            'admin@vens.com' => '2026-10-09 15:30:00',
-            'medico@vens.com' => '2026-10-12 09:20:00',
-            'recepcion@vens.com' => '2026-10-12 09:24:00',
+            'administrador' => '2026-10-09 15:30:00',
+            'medico' => '2026-10-12 09:20:00',
+            'recepcionista' => '2026-10-12 09:24:00',
         ];
     }
 }
